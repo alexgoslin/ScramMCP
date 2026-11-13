@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Scram</title>
+<!-- A stand-in for Scram's dashboard, for tests: the prompt box we must never type into, a
+     "Create new project" card, and a grid of projects. -->
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 24px; }
+  .grid { display: flex; gap: 12px; }
+  .card { border: 1px solid #ccc; border-radius: 8px; padding: 16px; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>What shall we build today?</h1>
+<textarea placeholder="Describe your project to start building..."></textarea>
+<h2>Projects</h2>
+<div class="grid">
+  <div class="card" id="create">+ Create new project</div>
+  <a class="card" href="/editor/p1">Demo Project</a>
+  <a class="card" href="/editor/p2">Bakery Orders</a>
+</div>
+<script>
+  // Like Scram: creating a project takes a moment, then the editor opens by itself.
+  document.getElementById("create").addEventListener("click", () => {
+    document.getElementById("create").textContent = "Creating…";
+    setTimeout(() => (location.href = "/editor/new1"), 800);
+  });
+</script>
+</body>
+</html>

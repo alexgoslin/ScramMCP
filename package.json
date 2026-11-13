@@ -1,0 +1,28 @@
+{
+  "name": "scram-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.js",
+  "dependencies": {
+    "@modelcontextprotocol/fastify": "2.0.1",
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0",
+    "fastify": "^5.12.8",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "electron": "45.3.1"
+  },
+  "description": "Scram MCP: a desktop app that shows Scram and lets AI agents on your computer build in it through Scram's AI chat, over MCP.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "fake-scram": "node test/fake-scram/server.js"
+  }
+}

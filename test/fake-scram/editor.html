@@ -1,0 +1,152 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Demo Project - Scram</title>
+<!--
+  A stand-in for Scram's editor, for tests. It copies the parts Scram MCP relies on (from RoboBuild's
+  notes on the real editor): the AI chat in a left column with an "Ask Claude..." box, a Send control
+  with aria-label="Send", a Stop control while the bot works, collapsed "Thought" blocks, plan cards
+  with "Read more" and "Approve plan", question forms (options, "Write my own answer", "Submit
+  answers") that replace the chat box, "Page Structure" under the chat, and a Run preview iframe.
+-->
+<style>
+  body { margin: 0; font: 14px system-ui, sans-serif; }
+  #top { height: 40px; display: flex; gap: 16px; align-items: center; padding: 0 12px; border-bottom: 1px solid #ddd; }
+  #top span { cursor: pointer; }
+  #left { position: fixed; left: 0; top: 41px; bottom: 0; width: 340px; display: flex; flex-direction: column; border-right: 1px solid #ddd; }
+  #chat { display: flex; flex-direction: column; height: 70%; }
+  #chat-title { padding: 6px 10px; font-weight: 600; }
+  #messages { flex: 1; overflow-y: auto; padding: 8px; }
+  .msg { margin: 6px 0; padding: 6px 8px; border-radius: 6px; white-space: pre-wrap; }
+  .user { background: #eef; }
+  .bot { background: #f5f5f5; }
+  #composer { display: flex; gap: 6px; padding: 8px; border-top: 1px solid #ddd; align-items: flex-end; }
+  #box { flex: 1; min-height: 40px; border: 1px solid #ccc; border-radius: 6px; padding: 6px; }
+  #box:empty::before { content: attr(data-placeholder); color: #999; }
+  #send, #stop { cursor: pointer; padding: 4px 8px; }
+  .hidden { display: none !important; }
+  #structure { padding: 8px; border-top: 1px solid #ddd; }
+  #canvas { position: fixed; left: 350px; top: 50px; right: 10px; bottom: 10px; }
+  #canvas iframe { width: 100%; height: 100%; border: 1px solid #ddd; }
+  .plan-more { display: none; }
+  .plan-more.open { display: block; }
+  form.question { padding: 8px; border-top: 1px solid #ddd; }
+</style>
+</head>
+<body>
+<div id="top"><b>Scram</b><span id="fe">Frontend 1</span><span>More</span><span>Publish</span></div>
+<div id="left">
+  <div id="chat">
+    <div id="chat-title">“New chat”</div>
+    <div id="messages"></div>
+    <div id="composer">
+      <div id="box" contenteditable="true" role="textbox" aria-label="Ask Claude..." data-placeholder="Ask Claude..."></div>
+      <button id="attach" aria-label="Attach files">📎</button>
+      <button id="stop" class="hidden">Stop</button>
+      <span id="send" role="button" aria-label="Send">➤</span>
+    </div>
+    <form class="question hidden" id="question">
+      <div>Which colour should the buttons be?</div>
+      <button type="button" class="opt">Blue</button>
+      <button type="button" class="opt">Green</button>
+      <input id="own" type="text" placeholder="Write my own answer">
+      <button type="button" id="submit-answers">Submit answers</button>
+    </form>
+  </div>
+  <div id="structure"><div>Page Structure</div><div>Home Page</div></div>
+</div>
+<div id="canvas"><iframe title="Running app" srcdoc="<h1>My app</h1><p>Hello from the running app.</p>"></iframe></div>
+
+<script>
+  const messages = document.getElementById("messages");
+  const box = document.getElementById("box");
+  const stop = document.getElementById("stop");
+  const send = document.getElementById("send");
+  const composer = document.getElementById("composer");
+  const question = document.getElementById("question");
+  let stopped = false;
+  let picked = "";
+  window.sentMessages = [];
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  function add(cls, text) {
+    const el = document.createElement("div");
+    el.className = `msg ${cls}`;
+    el.textContent = text;
+    messages.appendChild(el);
+    messages.scrollTop = messages.scrollHeight;
+    return el;
+  }
+  // The bot "streams" its reply word by word, with its Stop control showing, after a hidden
+  // Thought block.
+  async function botSays(text, { thinkMs = 600 } = {}) {
+    stopped = false;
+    stop.classList.remove("hidden");
+    const thought = document.createElement("details");
+    thought.className = "msg bot thinking";
+    thought.innerHTML = "<summary>Thought for 2s</summary><div>Internal reasoning that the person never reads: considering the layout of the pricing table carefully.</div>";
+    messages.appendChild(thought);
+    await sleep(thinkMs);
+    const el = add("bot", "");
+    for (const word of text.split(" ")) {
+      if (stopped) break;
+      el.textContent += (el.textContent ? " " : "") + word;
+      messages.scrollTop = messages.scrollHeight;
+      await sleep(40);
+    }
+    stop.classList.add("hidden");
+    return el;
+  }
+
+  async function submit() {
+    const text = box.innerText.trim();
+    if (!text) return;
+    window.sentMessages.push(text);
+    add("user", text);
+    box.textContent = "";
+    if (/question/i.test(text)) {
+      await botSays("I have a question before I start.");
+      composer.classList.add("hidden");
+      question.classList.remove("hidden");
+    } else if (/plan/i.test(text)) {
+      const el = await botSays("Here is my plan for the pricing page.");
+      const card = document.createElement("div");
+      card.className = "msg bot plan";
+      card.innerHTML = '<b>Plan: Pricing page</b><div class="plan-more">1. Add a Pricing page. 2. Add a three-tier pricing table.</div><button type="button" class="read-more">Read more</button> <button type="button" class="approve">Approve plan</button>';
+      card.querySelector(".read-more").onclick = () => card.querySelector(".plan-more").classList.add("open");
+      card.querySelector(".approve").onclick = async () => {
+        card.querySelector(".approve").remove();
+        await botSays("Building it now. Done! I added the Pricing page with a three-tier table.", { thinkMs: 1500 });
+      };
+      el.after(card);
+    } else if (/slow/i.test(text)) {
+      await botSays("Working on it. " + "step ".repeat(150) + "All done.");
+    } else {
+      await botSays(`You said ${text.length} characters. I updated the app.`);
+    }
+  }
+
+  send.addEventListener("click", submit);
+  box.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+    }
+  });
+  stop.addEventListener("click", () => {
+    stopped = true;
+  });
+  for (const opt of question.querySelectorAll(".opt")) opt.addEventListener("click", () => (picked = opt.textContent));
+  document.getElementById("submit-answers").addEventListener("click", async () => {
+    const own = document.getElementById("own").value.trim();
+    const answer = own || picked;
+    if (!answer) return;
+    question.classList.add("hidden");
+    composer.classList.remove("hidden");
+    add("user", `Answer: ${answer}`);
+    await botSays(`Great, I'll use ${answer} for the buttons.`);
+  });
+</script>
+</body>
+</html>

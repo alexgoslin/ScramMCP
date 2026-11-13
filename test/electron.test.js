@@ -1,0 +1,128 @@
+// The real app: starts Electron (on a virtual screen if there's no display), pointed at the fake
+// Scram pages, connects an MCP client the way Claude Code would, and builds something.
+
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { spawn, execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { startFakeScram } from "./fake-scram/server.js";
+
+const electronBin = execFileSync(process.execPath, ["-e", "process.stdout.write(require('electron'))"], { cwd: new URL("..", import.meta.url) }).toString();
+const hasDisplay = process.platform !== "linux" || !!process.env.DISPLAY;
+const hasXvfb = (() => {
+  try {
+    execFileSync("which", ["xvfb-run"]);
+    return true;
+  } catch {
+    return false;
+  }
+})();
+const skip = !hasDisplay && !hasXvfb ? "needs a display or xvfb-run" : false;
+
+const TOKEN = "electron-test-token";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const freePort = () =>
+  new Promise((resolve) => {
+    const s = createServer();
+    s.listen(0, "127.0.0.1", () => {
+      const { port } = s.address();
+      s.close(() => resolve(port));
+    });
+  });
+
+let site, proc, userData, client, port;
+let output = "";
+
+before(async () => {
+  if (skip) return;
+  site = await startFakeScram();
+  port = await freePort();
+  userData = mkdtempSync(join(tmpdir(), "scram-mcp-test-"));
+  const args = [".", ...(process.getuid?.() === 0 ? ["--no-sandbox"] : [])];
+  const [cmd, cmdArgs] = hasDisplay ? [electronBin, args] : ["xvfb-run", ["-a", electronBin, ...args]];
+  proc = spawn(cmd, cmdArgs, {
+    cwd: new URL("..", import.meta.url),
+    detached: true,
+    env: {
+      ...process.env,
+      SCRAM_MCP_DEV_HOME: site.url,
+      SCRAM_MCP_PORT: String(port),
+      SCRAM_MCP_TOKEN: TOKEN,
+      SCRAM_MCP_USER_DATA: userData,
+      SCRAM_MCP_NO_WELCOME: "1",
+    },
+  });
+  proc.stdout.on("data", (d) => (output += d));
+  proc.stderr.on("data", (d) => (output += d));
+  for (let i = 0; i < 120; i++) {
+    const up = await fetch(`http://127.0.0.1:${port}/`).then((r) => r.ok).catch(() => false);
+    if (up) break;
+    await sleep(500);
+  }
+  client = new Client({ name: "electron-test", version: "1.0.0" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${TOKEN}` } } })
+  );
+});
+
+after(async () => {
+  await client?.close().catch(() => {});
+  if (proc) {
+    try {
+      process.kill(-proc.pid, "SIGTERM");
+    } catch {
+      /* already gone */
+    }
+  }
+  await site?.close();
+  if (userData) rmSync(userData, { recursive: true, force: true });
+});
+
+const call = async (name, args = {}) => {
+  const r = await client.callTool({ name, arguments: args });
+  if (r.isError) throw new Error(`${name}: ${r.content[0].text}`);
+  return r;
+};
+const textOf = (r) => r.content[0].text;
+
+test("the Electron app serves MCP and builds through the chat", { skip, timeout: 240000 }, async () => {
+  try {
+    // The window opens on the (fake) dashboard.
+    let status;
+    for (let i = 0; i < 40; i++) {
+      status = JSON.parse(textOf(await call("scram_status")));
+      if (status.place === "dashboard" && status.logged_in) break;
+      await sleep(500);
+    }
+    assert.equal(status.place, "dashboard");
+
+    const list = JSON.parse(textOf(await call("scram_list_projects")));
+    assert.deepEqual(list.projects.map((p) => p.name), ["Demo Project", "Bakery Orders"]);
+
+    await call("scram_open_project", { name: "Demo Project" });
+    status = JSON.parse(textOf(await call("scram_status")));
+    assert.equal(status.place, "editor");
+    assert.equal(status.chat_box_found, true);
+
+    const plan = textOf(await call("scram_send_message", { message: "Make a plan for a pricing page", wait_seconds: 60 }));
+    assert.match(plan, /waiting for you/);
+    assert.match(plan, /Approve plan/);
+
+    const built = textOf(await call("scram_choose", { choices: ["Approve plan"], wait_seconds: 60 }));
+    assert.match(built, /has finished/);
+    assert.match(built, /I added the Pricing page/);
+
+    const shot = await call("scram_screenshot");
+    assert.equal(shot.content[0].type, "image");
+    assert.ok(shot.content[0].data.length > 5000);
+    const app = await call("scram_screenshot", { area: "app_preview" });
+    assert.equal(app.content[0].type, "image");
+  } catch (e) {
+    console.log("--- Electron output ---\n" + output);
+    throw e;
+  }
+});
