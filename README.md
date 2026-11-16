@@ -38,6 +38,8 @@ npm install
 npm start
 ```
 
+**On Windows** you can skip the terminal: download the ZIP from GitHub (green **Code** button → **Download ZIP**), unzip it, and double-click **`Start Scram MCP.cmd`**. The first time, it runs `npm install` for you. It also avoids a `spawn UNKNOWN` error that `npm start` hits on some Windows PCs.
+
 The first time, a window opens on Scram's dashboard, along with a box showing how to connect your agent.
 
 1. **Log in to Scram** in the window. The app remembers your login.
@@ -47,7 +49,7 @@ The first time, a window opens on Scram's dashboard, along with a box showing ho
    claude mcp add --transport http scram http://127.0.0.1:7777/mcp --header "Authorization: Bearer YOUR-TOKEN"
    ```
 
-   For Cursor, VS Code and other agents that use JSON settings, **Scram MCP → Connect an agent…** has a **Copy JSON** button.
+   For Cursor and other agents that use JSON settings, **Scram MCP → Connect an agent…** has a **Copy JSON** button. In VS Code's `mcp.json`, the top key is `servers` instead of `mcpServers`.
 
 3. **Ask your agent to build something**, for example:
 

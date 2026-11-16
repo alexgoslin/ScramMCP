@@ -110,7 +110,7 @@ function showConnectionDetails() {
       "",
       claudeCode,
       "",
-      "For Cursor, VS Code and other agents that take JSON settings:",
+      'For Cursor and other agents that take JSON settings (in VS Code\'s mcp.json the top key is "servers" instead of "mcpServers"):',
       "",
       json,
       "",
