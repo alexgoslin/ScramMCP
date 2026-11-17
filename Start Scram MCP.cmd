@@ -12,4 +12,10 @@ if not exist "node_modules\electron\dist\electron.exe" (
     exit /b 1
   )
 )
-start "" "node_modules\electron\dist\electron.exe" .
+echo Starting Scram MCP. This window shows its messages: minimise it. To stop, close the Scram MCP window.
+"node_modules\electron\dist\electron.exe" .
+if errorlevel 1 (
+  echo.
+  echo Scram MCP stopped with an error. The messages above say why.
+  pause
+)

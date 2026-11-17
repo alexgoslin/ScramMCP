@@ -9,9 +9,15 @@ import { readFileSync } from "node:fs";
 const HELPER = readFileSync(new URL("./agent-dom.js", import.meta.url), "utf8");
 const WORLD_ID = 1717; // any id other than 0 (the page's own world) and 999 (Electron's)
 
-export function electronPage(win) {
+// `getWin` returns the current Scram window (it can be closed and opened again).
+export function electronPage(getWin) {
+  const current = () => {
+    const win = getWin();
+    return win && !win.isDestroyed() ? win : null;
+  };
   const wc = () => {
-    if (win.isDestroyed()) throw new Error("The Scram MCP window has been closed.");
+    const win = current();
+    if (!win) throw new Error("The Scram MCP window is closed.");
     return win.webContents;
   };
   const run = (code) => wc().executeJavaScriptInIsolatedWorld(WORLD_ID, [{ code }]);
@@ -19,8 +25,8 @@ export function electronPage(win) {
   const zoom = () => wc().getZoomFactor() || 1;
 
   return {
-    url: () => (win.isDestroyed() ? "" : wc().getURL()),
-    title: () => (win.isDestroyed() ? "" : wc().getTitle()),
+    url: () => (current() ? wc().getURL() : ""),
+    title: () => (current() ? wc().getTitle() : ""),
 
     async dom(method, ...args) {
       const m = JSON.stringify(method);

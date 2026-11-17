@@ -58,8 +58,12 @@ export async function startMcpHttp({ port, token: tokenOrFn, factory, log = () =
   return {
     url,
     port: address.port,
+    // Closes at once, even while an agent is connected or waiting on a tool call (an open
+    // connection must never keep the app from quitting).
     async close() {
-      await app.close();
+      const closing = app.close();
+      app.server.closeAllConnections?.();
+      await closing;
       await handler.close();
     },
   };

@@ -14,7 +14,10 @@ import { ScramError } from "../src/scram/driver.js";
 
 const TOKEN = "test-token-123";
 const calls = [];
+let releaseSlowCall;
 const fakeDriver = {
+  // A tool call that waits (like scram_send_message while Scram's bot works).
+  waitForReply: () => new Promise((resolve) => (releaseSlowCall = () => resolve({ state: "done", reply: "" }))),
   status: async () => ({ place: "editor", logged_in: true, bot_working: false }),
   sendMessage: async (message) => {
     calls.push(message);
@@ -86,4 +89,17 @@ test("refuses requests without the token", async () => {
 
 test("refuses a non-localhost Host header (DNS rebinding)", async () => {
   assert.equal(await post("/mcp", { authorization: `Bearer ${TOKEN}`, host: "evil.example.com" }), 403);
+});
+
+test("closing the server doesn't wait for a connected agent's pending call", async () => {
+  const other = await startMcpHttp({ port: 0, token: TOKEN, factory: () => createScramMcpServer(fakeDriver) });
+  const client = new Client({ name: "test", version: "1.0.0" });
+  await client.connect(new StreamableHTTPClientTransport(new URL(other.url), { requestInit: auth }));
+  const pending = client.callTool({ name: "scram_wait_for_reply", arguments: {} }).catch((e) => e);
+  await new Promise((r) => setTimeout(r, 300));
+  const started = Date.now();
+  await other.close();
+  assert.ok(Date.now() - started < 2000, `close took ${Date.now() - started}ms`);
+  releaseSlowCall?.();
+  await pending;
 });

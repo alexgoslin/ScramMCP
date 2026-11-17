@@ -136,3 +136,19 @@ test("the Electron app serves MCP and builds through the chat", { skip, timeout:
     throw e;
   }
 });
+
+test("starting it again doesn't start a second copy", { skip, timeout: 60000 }, async () => {
+  const args = [".", ...(process.getuid?.() === 0 ? ["--no-sandbox"] : [])];
+  const [cmd, cmdArgs] = hasDisplay ? [electronBin, args] : ["xvfb-run", ["-a", electronBin, ...args]];
+  const second = spawn(cmd, cmdArgs, {
+    cwd: new URL("..", import.meta.url),
+    env: { ...process.env, SCRAM_MCP_DEV_HOME: site.url, SCRAM_MCP_PORT: String(port), SCRAM_MCP_TOKEN: TOKEN, SCRAM_MCP_USER_DATA: userData, SCRAM_MCP_NO_WELCOME: "1" },
+  });
+  let out = "";
+  second.stdout.on("data", (d) => (out += d));
+  const code = await new Promise((resolve) => second.on("exit", resolve));
+  assert.equal(code, 0);
+  assert.match(out, /already running/);
+  // The first copy still answers.
+  assert.match(textOf(await call("scram_status")), /"place"/);
+});

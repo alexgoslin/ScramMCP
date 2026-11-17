@@ -19,7 +19,13 @@ if (process.env.SCRAM_MCP_USER_DATA) app.setPath("userData", process.env.SCRAM_M
 // Some login pages (e.g. Google's) refuse browsers that call themselves Electron.
 app.userAgentFallback = app.userAgentFallback.replace(/ Electron\/\S+/, "").replace(/ scram-mcp\/\S+/i, "");
 
-if (!app.requestSingleInstanceLock()) app.quit();
+// Only one copy runs (there's one port and one Scram window). Starting it again shows the
+// running copy's window instead.
+const firstCopy = app.requestSingleInstanceLock();
+if (!firstCopy) {
+  console.log("Scram MCP is already running: showing its window.");
+  app.quit();
+}
 
 const urls = scramUrls();
 let win = null;
@@ -207,13 +213,14 @@ async function startServer(driver) {
 }
 
 app.on("second-instance", () => {
-  if (win) {
-    if (win.isMinimized()) win.restore();
-    win.focus();
-  }
+  if (!win) createWindow();
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
 });
 
 app.whenReady().then(async () => {
+  if (!firstCopy) return;
   ({ config, save: saveConfig } = loadConfig(app.getPath("userData")));
 
   // Only what Scram needs: clipboard access (copy buttons) and full screen. No camera, mic,
@@ -224,7 +231,7 @@ app.whenReady().then(async () => {
 
   buildMenu();
   createWindow();
-  const driver = new ScramDriver(electronPage(win), { urls, log });
+  const driver = new ScramDriver(electronPage(() => win), { urls, log });
   await startServer(driver);
 
   if (!config.welcomed && mcp && !process.env.SCRAM_MCP_NO_WELCOME) {
@@ -234,7 +241,8 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on("window-all-closed", async () => {
-  await mcp?.close().catch(() => {});
+// Closing the window quits the app straight away, even if an agent is still connected.
+app.on("window-all-closed", () => {
+  mcp?.close().catch(() => {});
   app.quit();
 });
