@@ -72,14 +72,16 @@ before(async () => {
 after(async () => {
   await client?.close().catch(() => {});
   if (proc) {
+    const exited = proc.exitCode !== null ? Promise.resolve() : new Promise((r) => proc.once("exit", r));
     try {
       process.kill(-proc.pid, "SIGTERM");
     } catch {
       /* already gone */
     }
+    await Promise.race([exited, sleep(10000)]); // let Electron finish writing its files first
   }
   await site?.close();
-  if (userData) rmSync(userData, { recursive: true, force: true });
+  if (userData) rmSync(userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
 });
 
 const call = async (name, args = {}) => {
@@ -120,6 +122,13 @@ test("the Electron app serves MCP and builds through the chat", { skip, timeout:
     assert.match(asked, /Just start building/);
     const answered = textOf(await call("scram_answer_question", { answer: "Just start building", wait_seconds: 60 }));
     assert.match(answered, /I'll go with: Just start building/);
+
+    // Stopping mid-build: the send button has turned into an unlabelled square stop button.
+    const slow = textOf(await call("scram_send_message", { message: "Do something slow", wait_seconds: 5 }));
+    assert.match(slow, /still working/);
+    assert.equal(JSON.parse(textOf(await call("scram_status"))).bot_working, true);
+    assert.deepEqual(JSON.parse(textOf(await call("scram_stop_bot"))), { stopped: true });
+    assert.equal(JSON.parse(textOf(await call("scram_status"))).bot_working, false);
 
     assert.match(textOf(await call("scram_run_mode")), /"mode": "run"/);
     assert.match(JSON.parse(textOf(await call("scram_status"))).mode, /^run$/);

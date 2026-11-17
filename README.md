@@ -70,7 +70,7 @@ Keep the app open while the agent works. It can be minimised, because Scram's AI
 | `scram_choose` | For anything else the bot shows: clicks its buttons in order and/or types a written answer, then waits for the reply |
 | `scram_wait_for_reply` | Keeps waiting if the bot was still working when a call returned |
 | `scram_read_chat` | The chat as a person sees it (without the bot's collapsed thinking) |
-| `scram_stop_bot` | Presses the chat's Stop control |
+| `scram_stop_bot` | Stops Scram's AI mid-build (presses the square stop button that replaces the send button while it works) |
 | `scram_list_projects` | The projects on the dashboard (best effort, see below) |
 | `scram_open_project` | Opens a project by editor URL or by name |
 | `scram_new_project` | Creates a new empty project, optionally named |

@@ -1489,4 +1489,55 @@
     }
     return out;
   };
+
+  // Is Scram's AI working? In real Scram (Nov 2026) the chat box then says "Add to queue…"
+  // (instead of "Describe the problem you're trying to solve…") and the send button turns into
+  // a square stop button, which may have no "Stop" label at all.
+  const byId = (id) => (id ? document.querySelector(`[data-sab-id="${CSS.escape(id)}"]`) : null);
+  const around = (el, levels) => {
+    let a = el;
+    for (let i = 0; i < levels && a.parentElement; i++) a = a.parentElement;
+    return a;
+  };
+  const QUEUE = /^add to queue/i;
+  const hints = (el) => ["placeholder", "aria-placeholder", "data-placeholder", "aria-label"].map((a) => (el.getAttribute(a) || "").trim());
+  dom.chatWorking = () => {
+    const input = byId(dom.findChatInput());
+    if (!input) return false;
+    if (hints(input).some((v) => QUEUE.test(v))) return true;
+    const area = around(input, 4);
+    for (const el of area.querySelectorAll("[placeholder],[aria-placeholder],[data-placeholder]")) if (hints(el).some((v) => QUEUE.test(v))) return true;
+    for (const el of area.querySelectorAll("*")) {
+      if (el.children.length || !visible(el)) continue;
+      const t = (el.textContent || "").trim();
+      if (t.length < 20 && QUEUE.test(t)) return true; // a placeholder drawn as its own element
+    }
+    return false;
+  };
+
+  // The stop button while Scram's AI works: a button near the chat box labelled stop / cancel,
+  // else (when the box says "Add to queue…") the rightmost button there: the send button's spot.
+  dom.chatStopButton = () => {
+    const input = byId(dom.findChatInput());
+    if (!input) return null;
+    const area = around(input, 5);
+    const words = (el) =>
+      `${el.getAttribute("aria-label") || ""} ${el.getAttribute("title") || ""} ${el.getAttribute("data-testid") || ""} ${(el.innerText || "").trim().slice(0, 30)} ${[el, ...el.querySelectorAll("svg,use,i,img")].map((n) => `${n.getAttribute("class") || ""} ${n.getAttribute("data-icon") || ""}`).join(" ")}`;
+    const cands = new Set();
+    for (const el of area.querySelectorAll("button,[role=button],[aria-label]")) if (visible(el) && el !== input && !input.contains(el) && !el.contains(input)) cands.add(el);
+    for (const icon of area.querySelectorAll("svg")) {
+      let pick = null;
+      for (let p = icon.parentElement, i = 0; p && i < 4 && area.contains(p) && p !== area; p = p.parentElement, i++) {
+        if (p === input || p.contains(input)) break;
+        if (getComputedStyle(p).cursor === "pointer") pick = p;
+      }
+      if (pick && visible(pick)) cands.add(pick);
+    }
+    const list = [...cands].filter((el) => !/attach|upload|camera|screenshot|mic|voice|record/i.test(words(el)));
+    const labelled = list.find((el) => /\b(stop|cancel|interrupt|abort)\b/i.test(words(el)));
+    const pick = labelled || (dom.chatWorking() ? list.sort((a, b) => b.getBoundingClientRect().right - a.getBoundingClientRect().right)[0] : null);
+    if (!pick) return null;
+    if (!pick.dataset.sabId) pick.dataset.sabId = `mcp${next++}`;
+    return { id: pick.dataset.sabId, label: (pick.getAttribute("aria-label") || "").trim(), how: labelled ? "label" : "position" };
+  };
 })();

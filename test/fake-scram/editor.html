@@ -6,8 +6,9 @@
 <!--
   A stand-in for Scram's editor, for tests. It copies the parts Scram MCP relies on, from RoboBuild's
   notes and from screenshots of the real editor (Nov 2026): the AI chat in a left column with a
-  "Describe the problem you're trying to solve..." box and a Send control (aria-label="Send"), a
-  Stop control while the bot works, collapsed "Thought" blocks, a "Review plan" card with "Read
+  "Describe the problem you're trying to solve..." box and a Send control (aria-label="Send") that
+  turns into an unlabelled square stop button while the bot works, with the box then saying
+  "Add to queue...", collapsed "Thought" blocks, a "Review plan" card with "Read
   more" and "Approve plan", questions as option cards (a title over a description) plus a "Write
   my own answer" box and Cancel, which replace the chat box until answered, "Page Structure"
   under the chat, Edit / Run buttons at the top right (Run = preview=run in the address), and a
@@ -29,7 +30,7 @@
   #composer { display: flex; gap: 6px; padding: 8px; border-top: 1px solid #ddd; align-items: flex-end; }
   #box { flex: 1; min-height: 40px; border: 1px solid #ccc; border-radius: 6px; padding: 6px; }
   #box:empty::before { content: attr(data-placeholder); color: #999; }
-  #send, #stop { cursor: pointer; padding: 4px 8px; }
+  #send { cursor: pointer; padding: 4px 8px; }
   .hidden { display: none !important; }
   #structure { padding: 8px; border-top: 1px solid #ddd; }
   #canvas { position: fixed; left: 350px; top: 50px; right: 10px; bottom: 10px; }
@@ -52,7 +53,6 @@
     <div id="composer">
       <div id="box" contenteditable="true" role="textbox" aria-label="Describe the problem you're trying to solve..." data-placeholder="Describe the problem you're trying to solve..."></div>
       <button id="attach" aria-label="Attach files">📎</button>
-      <button id="stop" class="hidden">Stop</button>
       <span id="send" role="button" aria-label="Send">➤</span>
     </div>
   </div>
@@ -63,7 +63,6 @@
 <script>
   const messages = document.getElementById("messages");
   const box = document.getElementById("box");
-  const stop = document.getElementById("stop");
   const send = document.getElementById("send");
   const composer = document.getElementById("composer");
   let stopped = false;
@@ -97,11 +96,27 @@
     messages.scrollTop = messages.scrollHeight;
     return el;
   }
-  // The bot "streams" its reply word by word, with its Stop control showing, after a hidden
-  // Thought block.
+  // While the bot works, like real Scram: the send button becomes a square stop button with no
+  // label, and the chat box says "Add to queue...".
+  let working = false;
+  const IDLE_HINT = "Describe the problem you're trying to solve...";
+  function setWorking(on) {
+    working = on;
+    const hint = on ? "Add to queue..." : IDLE_HINT;
+    box.setAttribute("aria-label", hint);
+    box.dataset.placeholder = hint;
+    if (on) {
+      send.removeAttribute("aria-label");
+      send.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14"><rect width="14" height="14" rx="2"/></svg>';
+    } else {
+      send.setAttribute("aria-label", "Send");
+      send.textContent = "➤";
+    }
+  }
+  // The bot "streams" its reply word by word, after a hidden Thought block.
   async function botSays(text, { thinkMs = 600 } = {}) {
     stopped = false;
-    stop.classList.remove("hidden");
+    setWorking(true);
     const thought = document.createElement("details");
     thought.className = "msg bot thinking";
     thought.innerHTML = "<summary>Thought for 2s</summary><div>Internal reasoning that the person never reads: considering the layout of the pricing table carefully.</div>";
@@ -114,7 +129,7 @@
       messages.scrollTop = messages.scrollHeight;
       await sleep(40);
     }
-    stop.classList.add("hidden");
+    setWorking(false);
     return el;
   }
 
@@ -176,15 +191,12 @@
     }
   }
 
-  send.addEventListener("click", submit);
+  send.addEventListener("click", () => (working ? (stopped = true) : submit()));
   box.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submit();
     }
-  });
-  stop.addEventListener("click", () => {
-    stopped = true;
   });
 </script>
 </body>

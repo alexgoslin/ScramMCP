@@ -238,7 +238,7 @@ export class ScramDriver {
       await sleep(POLL_MS);
       await this.try("scrollChatToBottom");
       const chat = norm((await this.try("chatText")) || "");
-      const generating = !!(await this.try("isGenerating"));
+      const generating = await this.working();
       if (generating) sawGenerating = true;
       const readable = (await this.try("chatReadable"))?.text || "";
       const replied = this.baseline != null && newLines(this.baseline, readable, this.sent).trim().length > 0;
@@ -302,7 +302,7 @@ export class ScramDriver {
     out.logged_in = login === null ? null : !login;
     if (out.place === "editor") {
       out.chat_box_found = !!(await this.try("findChatInput"));
-      out.bot_working = !!(await this.try("isGenerating"));
+      out.bot_working = await this.working();
       out.waiting_for_you = (!out.bot_working && (await this.try("awaitingUser"))) || false;
       const choices = await this.choices();
       if (choices.length) out.choices = ScramDriver.describeChoices(choices);
@@ -327,7 +327,7 @@ export class ScramDriver {
     if (!text) throw new ScramError("The message is empty.");
     return this.exclusive("sending a message to Scram's bot", async () => {
       await this.ensureEditor();
-      if (await this.try("isGenerating")) {
+      if (await this.working()) {
         throw new ScramError("Scram's bot is still working on the last request. Wait for it with scram_wait_for_reply, or stop it with scram_stop_bot.");
       }
       const inputId = await this.revealChat();
@@ -415,7 +415,7 @@ export class ScramDriver {
     return this.exclusive("waiting for Scram's bot", async () => {
       await this.ensureEditor();
       // Already finished? Then just report.
-      const generating = !!(await this.try("isGenerating"));
+      const generating = await this.working();
       const result = generating ? await this.waitForBot({ waitMs, onProgress, signal }) : { state: "done" };
       if (result.state === "done") {
         const reason = await this.try("awaitingUser");
@@ -433,7 +433,7 @@ export class ScramDriver {
     if (!labels.length && !text) throw new ScramError("Say which choice to pick (labels) and/or what to write (text).");
     return this.exclusive("answering Scram's bot", async () => {
       await this.ensureEditor();
-      if (await this.try("isGenerating")) throw new ScramError("Scram's bot is still working. Wait for it with scram_wait_for_reply first.");
+      if (await this.working()) throw new ScramError("Scram's bot is still working. Wait for it with scram_wait_for_reply, or stop it with scram_stop_bot.");
       await this.try("scrollChatToBottom");
       const before = (await this.try("chatReadable"))?.text || "";
       for (const label of labels) {
@@ -525,14 +525,29 @@ export class ScramDriver {
     return this.choose({ ...opts, text: answer });
   }
 
+  // Stop Scram's AI mid-build: press the stop button (the send button turns into one while it
+  // works). Not one-at-a-time: it must work while another call is waiting on the bot.
   async stopBot() {
     await this.ensureEditor();
-    const snap = await this.dom("snapshot", { maxElements: 400, maxText: 0 });
-    const stop = snap.elements.find((e) => STOP_LABEL.test(squash(e.label)));
-    if (!stop) return { stopped: false, note: "Scram's bot isn't working on anything (no Stop control on screen)." };
+    if (!(await this.working())) {
+      return { stopped: false, note: "Scram's AI isn't working on anything right now (its send button isn't a stop button)." };
+    }
+    let stop = await this.try("chatStopButton");
+    if (!stop) {
+      const snap = await this.dom("snapshot", { maxElements: 400, maxText: 0 });
+      stop = snap.elements.find((e) => STOP_LABEL.test(squash(e.label))) || null;
+    }
+    if (!stop) throw new ScramError("Scram's AI is working, but its stop button couldn't be found. Use scram_screenshot to see the window.");
     await this.click(stop);
-    await sleep(1500);
-    return { stopped: !(await this.try("isGenerating")) };
+    this.log("Pressed Scram's stop button.");
+    const stopped = await this.waitFor(async () => !(await this.working()), 10000);
+    return stopped ? { stopped: true } : { stopped: false, note: "Pressed the stop button, but Scram's AI still looks busy. Check with scram_screenshot." };
+  }
+
+  // Is Scram's AI working? A "Stop" control on screen, or (real Scram) the chat box saying
+  // "Add to queue…" while its send button is a stop button.
+  async working() {
+    return !!(await this.try("isGenerating")) || !!(await this.try("chatWorking"));
   }
 
   // ------------------------------------------------------------------ Edit / Run mode
