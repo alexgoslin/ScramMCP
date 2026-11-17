@@ -17,14 +17,14 @@
 <h2>Projects</h2>
 <div class="grid">
   <div class="card" id="create">+ Create new project</div>
-  <a class="card" href="/editor/p1">Demo Project</a>
-  <a class="card" href="/editor/p2">Bakery Orders</a>
+  <a class="card" href="/editor/p1/page/home">Demo Project</a>
+  <a class="card" href="/editor/p2/page/home">Bakery Orders</a>
 </div>
 <script>
   // Like Scram: creating a project takes a moment, then the editor opens by itself.
   document.getElementById("create").addEventListener("click", () => {
     document.getElementById("create").textContent = "Creating…";
-    setTimeout(() => (location.href = "/editor/new1"), 800);
+    setTimeout(() => (location.href = "/editor/new1/page/home"), 800);
   });
 </script>
 </body>

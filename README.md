@@ -53,7 +53,7 @@ The first time, a window opens on Scram's dashboard, along with a box showing ho
 
 3. **Ask your agent to build something**, for example:
 
-   > Using Scram, create a new project called "Bakery Orders" and build an order form with a list of today's orders. Approve the bot's plans unless they miss something.
+   > Using Scram, create a new project called "Bakery Orders" and build an order form with a list of today's orders. Approve the bot's plans unless they miss something, and switch to Run mode so it can test its work.
 
 Keep the app open while the agent works. It can be minimised, because Scram's AI keeps running in the background.
 
@@ -63,7 +63,11 @@ Keep the app open while the agent works. It can be minimised, because Scram's AI
 | --- | --- |
 | `scram_status` | Where the window is (dashboard / project editor / login), whether the bot is working or waiting for an answer, and what choices it's showing |
 | `scram_send_message` | Types a message into the AI chat, sends it, waits for the bot, returns its reply |
-| `scram_choose` | Clicks the bot's buttons ("Approve plan", an answer option), types a written answer, presses Submit, then waits for the reply |
+| `scram_approve_plan` | Clicks "Approve plan" on the plan the bot is waiting on, then waits for it to build |
+| `scram_answer_question` | Answers the bot's question: clicks the option with that title (e.g. "Just start building") or writes the answer in "Write my own answer" |
+| `scram_run_mode` | Switches the editor to Run mode (the running app shows, and the bot can test it) |
+| `scram_edit_mode` | Switches the editor back to Edit mode |
+| `scram_choose` | For anything else the bot shows: clicks its buttons in order and/or types a written answer, then waits for the reply |
 | `scram_wait_for_reply` | Keeps waiting if the bot was still working when a call returned |
 | `scram_read_chat` | The chat as a person sees it (without the bot's collapsed thinking) |
 | `scram_stop_bot` | Presses the chat's Stop control |

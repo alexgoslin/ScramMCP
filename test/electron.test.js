@@ -112,9 +112,19 @@ test("the Electron app serves MCP and builds through the chat", { skip, timeout:
     assert.match(plan, /waiting for you/);
     assert.match(plan, /Approve plan/);
 
-    const built = textOf(await call("scram_choose", { choices: ["Approve plan"], wait_seconds: 60 }));
+    const built = textOf(await call("scram_approve_plan", { wait_seconds: 60 }));
     assert.match(built, /has finished/);
     assert.match(built, /I added the Pricing page/);
+
+    const asked = textOf(await call("scram_send_message", { message: "Ask me a question first", wait_seconds: 60 }));
+    assert.match(asked, /Just start building/);
+    const answered = textOf(await call("scram_answer_question", { answer: "Just start building", wait_seconds: 60 }));
+    assert.match(answered, /I'll go with: Just start building/);
+
+    assert.match(textOf(await call("scram_run_mode")), /"mode": "run"/);
+    assert.match(JSON.parse(textOf(await call("scram_status"))).mode, /^run$/);
+    assert.match(textOf(await call("scram_edit_mode")), /"mode": "edit"/);
+    await call("scram_run_mode");
 
     const shot = await call("scram_screenshot");
     assert.equal(shot.content[0].type, "image");

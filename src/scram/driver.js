@@ -33,6 +33,8 @@ const STOP_LABEL = /^(stop|stop generating|stop response|cancel generation)$/i;
 // A question form's submit button. Kept narrow: a looser match ("Continue", "Done") could click
 // an unrelated button in an older message.
 const SUBMIT_LABEL = /^(submit|submit answers?|send answers?)$/i;
+const APPROVE_LABEL = /^(approve( plan)?|accept( plan)?|approve (and|&) build|build it|proceed)$/i;
+const ANSWER_BOX = /own answer|your answer|other answer/i;
 
 const norm = (t) => (t || "").replace(/\d+/g, "#");
 const squash = (t) => String(t || "").replace(/\s+/g, " ").trim();
@@ -59,6 +61,17 @@ export function newLines(before, after, exclude = "") {
 }
 
 export class ScramError extends Error {}
+
+// The button whose label is `label` (exact, then starts with, then contains; case doesn't matter).
+function pickChoice(choices, label) {
+  const l = squash(label).toLowerCase();
+  const buttons = choices.filter((c) => c.kind === "button");
+  return (
+    buttons.find((c) => c.label.toLowerCase() === l) ||
+    buttons.find((c) => c.label.toLowerCase().startsWith(l)) ||
+    buttons.find((c) => c.label.toLowerCase().includes(l))
+  );
+}
 
 export class ScramDriver {
   constructor(page, { urls = scramUrls(), log = () => {} } = {}) {
@@ -164,7 +177,8 @@ export class ScramDriver {
 
   // The bot's buttons and fields: plan approval, answer options, "Write my own answer", Submit.
   // Only the AI chat's own controls and pop-up dialogs, never the editor around it, and never
-  // anything on the never-click list. (RoboBuild's "controls" filter.)
+  // anything on the never-click list. (RoboBuild's "controls" filter.) Answer options in real
+  // Scram are cards (a title over a description): they're listed by their title.
   async choices() {
     const snap = await this.try("snapshot", { maxElements: 300, maxText: 0, pointer: true });
     if (!snap) return [];
@@ -177,18 +191,31 @@ export class ScramDriver {
     };
     const seen = new Set();
     const out = [];
+    const add = (c) => {
+      const key = `${c.kind}:${c.label.toLowerCase()}`;
+      if (seen.has(key) || NOT_A_CHOICE.test(c.label) || NEVER_CLICK.test(c.label)) return;
+      seen.add(key);
+      out.push(c);
+    };
+    for (const card of (await this.try("chatCards")) || []) {
+      add({ id: card.id, label: squash(card.title), detail: squash(card.detail), kind: "button" });
+    }
     for (const e of snap.elements) {
       const label = squash(e.label);
-      if (e.href || e.header || e.disabled || e.id === inputId) continue;
+      if (e.href || e.header || e.disabled) continue;
+      // While the bot asks a question, its "Write my own answer" box can stand in for the chat box.
+      if (e.id === inputId && !ANSWER_BOX.test(label)) continue;
       if (!(e.inLayer || inChat(e))) continue;
-      if (!e.editable && (label.length < 3 || label.length > 100)) continue;
-      if (NOT_A_CHOICE.test(label) || NEVER_CLICK.test(label)) continue;
-      const key = `${e.editable ? "box" : "btn"}:${label.toLowerCase()}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ id: e.id, label, role: e.role, kind: e.editable ? "text box" : "button" });
+      if (!e.editable && (label.length < 3 || label.length > 240)) continue;
+      if (!e.editable && out.some((c) => label.toLowerCase().startsWith(c.label.toLowerCase()) && c.detail)) continue; // a card's own button
+      add({ id: e.id, label, role: e.role, kind: e.editable ? "text box" : "button" });
     }
     return out;
+  }
+
+  // Choices as text for the agent: "Approve plan", "Just start building (I make all the design…)".
+  static describeChoices(choices) {
+    return choices.map((c) => (c.kind === "text box" ? `[text box] ${c.label}` : c.detail ? `${c.label} (${c.detail.slice(0, 120)})` : c.label));
   }
 
   // Wait until Scram's bot has finished. Watches the chat panel only (the running app in Run
@@ -261,7 +288,7 @@ export class ScramDriver {
     if (result.reason) out.waiting_for = result.reason;
     if (result.state === "waiting_for_you" || result.state === "done") {
       const choices = await this.choices();
-      if (choices.length) out.choices = choices.map((c) => (c.kind === "text box" ? `[text box] ${c.label}` : c.label));
+      if (choices.length) out.choices = ScramDriver.describeChoices(choices);
     }
     return out;
   }
@@ -278,7 +305,8 @@ export class ScramDriver {
       out.bot_working = !!(await this.try("isGenerating"));
       out.waiting_for_you = (!out.bot_working && (await this.try("awaitingUser"))) || false;
       const choices = await this.choices();
-      if (choices.length) out.choices = choices.map((c) => (c.kind === "text box" ? `[text box] ${c.label}` : c.label));
+      if (choices.length) out.choices = ScramDriver.describeChoices(choices);
+      out.mode = await this.currentMode();
     }
     return out;
   }
@@ -408,23 +436,12 @@ export class ScramDriver {
       if (await this.try("isGenerating")) throw new ScramError("Scram's bot is still working. Wait for it with scram_wait_for_reply first.");
       await this.try("scrollChatToBottom");
       const before = (await this.try("chatReadable"))?.text || "";
-      const inputId = await this.try("findChatInput");
-      const pick = (choices, label) => {
-        const l = label.toLowerCase();
-        const buttons = choices.filter((c) => c.kind === "button");
-        return (
-          buttons.find((c) => c.label.toLowerCase() === l) ||
-          buttons.find((c) => c.label.toLowerCase().startsWith(l)) ||
-          buttons.find((c) => c.label.toLowerCase().includes(l))
-        );
-      };
       for (const label of labels) {
         if (NEVER_CLICK.test(label)) throw new ScramError(`Not clicking “${label}”: Scram MCP never clicks publish, delete, share, billing or log-out controls.`);
         const choices = await this.choices();
-        const c = pick(choices, label);
+        const c = pickChoice(choices, label);
         if (!c) {
-          const list = choices.map((x) => x.label).join(" · ") || "none";
-          throw new ScramError(`There's no “${label}” choice on screen. Choices right now: ${list}`);
+          throw new ScramError(`There's no “${label}” choice on screen. Choices right now: ${ScramDriver.describeChoices(choices).join(" · ") || "none"}`);
         }
         await this.click(c);
         this.log(`Clicked “${c.label}” in Scram's chat.`);
@@ -432,14 +449,14 @@ export class ScramDriver {
       }
       let box = null;
       if (text) {
-        let choices = await this.choices();
-        box = choices.find((c) => c.kind === "text box" && c.id !== inputId);
-        const own = pick(choices, "write my own answer") || pick(choices, "write your own answer");
-        if (!box && own) {
-          await this.click(own);
-          await sleep(900);
-          choices = await this.choices();
-          box = choices.find((c) => c.kind === "text box" && c.id !== inputId);
+        box = await this.answerBox();
+        if (!box) {
+          const own = pickChoice(await this.choices(), "write my own answer") || pickChoice(await this.choices(), "write your own answer");
+          if (own) {
+            await this.click(own);
+            await sleep(900);
+            box = await this.answerBox();
+          }
         }
         if (!box) throw new ScramError("Scram isn't showing a box for a written answer. Use scram_send_message to reply in the chat instead.");
         const typed = await this.dom("typeChat", { id: box.id, label: box.label, role: box.role }, text);
@@ -452,8 +469,14 @@ export class ScramDriver {
           await this.click(submitBtn);
           this.log(`Clicked “${submitBtn.label}”.`);
         } else if (box) {
-          await this.try("click", box.id); // focus it
+          // No Submit button: Enter sends a written answer, else the box's own send arrow.
+          await this.try("click", box.id);
           await this.page.trustedKey("Enter");
+          await sleep(1200);
+          if (squash(await this.try("inputValue", box.id))) {
+            const send = await this.try("findSendButton", box.id);
+            if (send) await this.click(send);
+          }
         }
       }
       this.baseline = before;
@@ -461,6 +484,45 @@ export class ScramDriver {
       const result = await this.waitForBot({ waitMs, onProgress, signal });
       return this.collectReply(result);
     });
+  }
+
+  // The box for a written answer ("Write my own answer"), if Scram is showing one.
+  async answerBox() {
+    const boxes = (await this.choices()).filter((c) => c.kind === "text box");
+    const inputId = await this.try("findChatInput");
+    return boxes.find((c) => ANSWER_BOX.test(c.label)) || boxes.find((c) => c.id !== inputId) || null;
+  }
+
+  // Approve the plan Scram's bot is waiting on (its "Approve plan" button).
+  async approvePlan(opts = {}) {
+    await this.ensureEditor();
+    const choices = await this.choices();
+    const approve = choices.find((c) => c.kind === "button" && APPROVE_LABEL.test(c.label));
+    if (!approve) {
+      throw new ScramError(
+        `There's no plan waiting for approval (no “Approve plan” button in the chat). Choices right now: ${ScramDriver.describeChoices(choices).join(" · ") || "none"}`
+      );
+    }
+    return this.choose({ ...opts, labels: [approve.label], submit: false });
+  }
+
+  // Answer the question Scram's bot is asking: pick the option whose title matches, or else write
+  // the answer in its "Write my own answer" box.
+  async answerQuestion(answer, opts = {}) {
+    answer = squash(answer);
+    if (!answer) throw new ScramError("The answer is empty.");
+    await this.ensureEditor();
+    const choices = await this.choices();
+    const options = choices.filter((c) => c.kind === "button" && !APPROVE_LABEL.test(c.label) && !/^cancel$/i.test(c.label));
+    const a = answer.toLowerCase();
+    const option = options.find((c) => c.label.toLowerCase() === a) || options.find((c) => c.label.toLowerCase().startsWith(a) && a.length >= 4);
+    if (option) return this.choose({ ...opts, labels: [option.label] });
+    if (!(await this.answerBox()) && !pickChoice(choices, "write my own answer")) {
+      throw new ScramError(
+        `Scram isn't asking a question right now (no answer options or answer box in the chat). Choices right now: ${ScramDriver.describeChoices(choices).join(" · ") || "none"}`
+      );
+    }
+    return this.choose({ ...opts, text: answer });
   }
 
   async stopBot() {
@@ -471,6 +533,78 @@ export class ScramDriver {
     await this.click(stop);
     await sleep(1500);
     return { stopped: !(await this.try("isGenerating")) };
+  }
+
+  // ------------------------------------------------------------------ Edit / Run mode
+
+  // Run mode shows the running app in the middle of the editor (and lets Scram's bot test it);
+  // Edit mode shows the canvas for editing. In Scram's address, Run mode is "preview=run".
+  async currentMode() {
+    if (/[?&]preview=run\b/.test(this.page.url())) return "run";
+    const t = await this.try("modeToggle");
+    if (t?.active === true) return "run";
+    return "edit";
+  }
+
+  // The Edit / Run buttons (top right of the page view), getting them on screen if a panel or a
+  // sub-view (workflow canvas, Plans panel) is in the way. (From RoboBuild's findModeToggle.)
+  async findModeToggle() {
+    const visible = async () => {
+      const t = await this.try("modeToggle");
+      if (!t) return null;
+      const c = await this.try("centerOf", { id: t.id });
+      return c?.covered ? null : t;
+    };
+    let t = await visible();
+    if (t) return t;
+    const plansX = await this.try("panelCloseTarget", "^plans$");
+    if (plansX) {
+      await this.click(plansX);
+      await sleep(1200);
+      if ((t = await visible())) return t;
+    }
+    await this.try("pressKey", "Escape");
+    await sleep(400);
+    for (let i = 0; i < 3; i++) {
+      const back = await this.try("backTarget");
+      if (!back) break;
+      await this.click(back);
+      await sleep(1500);
+      if ((t = await visible())) return t;
+    }
+    return visible();
+  }
+
+  async setMode(mode) {
+    if (mode !== "run" && mode !== "edit") throw new ScramError('Mode must be "run" or "edit".');
+    const name = mode === "run" ? "Run" : "Edit";
+    return this.exclusive(`switching Scram to ${name} mode`, async () => {
+      await this.ensureEditor();
+      if ((await this.currentMode()) === mode) return { mode, changed: false, note: `Scram was already in ${name} mode.` };
+      let how = "";
+      const t = await this.findModeToggle();
+      const id = t && (mode === "run" ? t.id : t.editId);
+      if (id) {
+        await this.click({ id });
+        if (await this.waitFor(async () => (await this.currentMode()) === mode, 8000)) how = `clicked ${name}`;
+      }
+      if (!how) {
+        // Last resort: open the page with the mode in its address (preview=run), on a page view.
+        const u = new URL(this.page.url());
+        if (!/\/page\//.test(u.pathname)) {
+          throw new ScramError(`Couldn't find Scram's ${name} button. Open a page of the app in the editor (the page view) and try again.`);
+        }
+        if (mode === "run") u.searchParams.set("preview", "run");
+        else u.searchParams.delete("preview");
+        await this.page.navigate(u.href);
+        await this.waitFor(async () => (await this.currentMode()) === mode && !!(await this.try("findChatInput")), 20000);
+        await this.try("scrollChatToBottom");
+        how = "reopened the page in that mode";
+      }
+      if ((await this.currentMode()) !== mode) throw new ScramError(`Tried to switch Scram to ${name} mode, but it still looks like it isn't.`);
+      this.log(`Switched Scram to ${name} mode (${how}).`);
+      return { mode, changed: true };
+    });
   }
 
   // ------------------------------------------------------------------ projects

@@ -4,16 +4,21 @@
 <meta charset="utf-8">
 <title>Demo Project - Scram</title>
 <!--
-  A stand-in for Scram's editor, for tests. It copies the parts Scram MCP relies on (from RoboBuild's
-  notes on the real editor): the AI chat in a left column with an "Ask Claude..." box, a Send control
-  with aria-label="Send", a Stop control while the bot works, collapsed "Thought" blocks, plan cards
-  with "Read more" and "Approve plan", question forms (options, "Write my own answer", "Submit
-  answers") that replace the chat box, "Page Structure" under the chat, and a Run preview iframe.
+  A stand-in for Scram's editor, for tests. It copies the parts Scram MCP relies on, from RoboBuild's
+  notes and from screenshots of the real editor (Nov 2026): the AI chat in a left column with a
+  "Describe the problem you're trying to solve..." box and a Send control (aria-label="Send"), a
+  Stop control while the bot works, collapsed "Thought" blocks, a "Review plan" card with "Read
+  more" and "Approve plan", questions as option cards (a title over a description) plus a "Write
+  my own answer" box and Cancel, which replace the chat box until answered, "Page Structure"
+  under the chat, Edit / Run buttons at the top right (Run = preview=run in the address), and a
+  Run preview iframe.
 -->
 <style>
   body { margin: 0; font: 14px system-ui, sans-serif; }
   #top { height: 40px; display: flex; gap: 16px; align-items: center; padding: 0 12px; border-bottom: 1px solid #ddd; }
   #top span { cursor: pointer; }
+  #modes { margin-left: auto; display: flex; gap: 4px; }
+  #modes button[aria-pressed="true"] { background: #dde; }
   #left { position: fixed; left: 0; top: 41px; bottom: 0; width: 340px; display: flex; flex-direction: column; border-right: 1px solid #ddd; }
   #chat { display: flex; flex-direction: column; height: 70%; }
   #chat-title { padding: 6px 10px; font-weight: 600; }
@@ -31,28 +36,25 @@
   #canvas iframe { width: 100%; height: 100%; border: 1px solid #ddd; }
   .plan-more { display: none; }
   .plan-more.open { display: block; }
-  form.question { padding: 8px; border-top: 1px solid #ddd; }
+  .card { border: 1px solid #ddd; border-radius: 6px; padding: 6px 8px; margin: 6px 0; cursor: pointer; }
+  .card .t { font-weight: 600; }
+  #own { width: 95%; }
 </style>
 </head>
 <body>
-<div id="top"><b>Scram</b><span id="fe">Frontend 1</span><span>More</span><span>Publish</span></div>
+<div id="top"><b>Scram</b><span id="fe">Frontend 1</span><span>More</span><span>Publish</span>
+  <div id="modes"><button id="edit-btn" aria-pressed="true">Edit</button><button id="run-btn" aria-pressed="false">Run</button></div>
+</div>
 <div id="left">
   <div id="chat">
     <div id="chat-title">“New chat”</div>
     <div id="messages"></div>
     <div id="composer">
-      <div id="box" contenteditable="true" role="textbox" aria-label="Ask Claude..." data-placeholder="Ask Claude..."></div>
+      <div id="box" contenteditable="true" role="textbox" aria-label="Describe the problem you're trying to solve..." data-placeholder="Describe the problem you're trying to solve..."></div>
       <button id="attach" aria-label="Attach files">📎</button>
       <button id="stop" class="hidden">Stop</button>
       <span id="send" role="button" aria-label="Send">➤</span>
     </div>
-    <form class="question hidden" id="question">
-      <div>Which colour should the buttons be?</div>
-      <button type="button" class="opt">Blue</button>
-      <button type="button" class="opt">Green</button>
-      <input id="own" type="text" placeholder="Write my own answer">
-      <button type="button" id="submit-answers">Submit answers</button>
-    </form>
   </div>
   <div id="structure"><div>Page Structure</div><div>Home Page</div></div>
 </div>
@@ -64,10 +66,27 @@
   const stop = document.getElementById("stop");
   const send = document.getElementById("send");
   const composer = document.getElementById("composer");
-  const question = document.getElementById("question");
   let stopped = false;
-  let picked = "";
   window.sentMessages = [];
+
+  // Edit / Run: Run mode is "preview=run" in the address.
+  const runBtn = document.getElementById("run-btn");
+  const editBtn = document.getElementById("edit-btn");
+  function showMode() {
+    const run = new URL(location.href).searchParams.get("preview") === "run";
+    runBtn.setAttribute("aria-pressed", String(run));
+    editBtn.setAttribute("aria-pressed", String(!run));
+  }
+  function setMode(run) {
+    const u = new URL(location.href);
+    if (run) u.searchParams.set("preview", "run");
+    else u.searchParams.delete("preview");
+    history.replaceState(null, "", u.href);
+    showMode();
+  }
+  runBtn.addEventListener("click", () => setMode(true));
+  editBtn.addEventListener("click", () => setMode(false));
+  showMode();
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   function add(cls, text) {
@@ -99,6 +118,37 @@
     return el;
   }
 
+  // A question like real Scram's: option cards, a "Write my own answer" box (Enter sends) and
+  // Cancel, in place of the chat box until it's answered.
+  function ask() {
+    const q = document.createElement("div");
+    q.className = "msg bot question";
+    q.innerHTML = `<div>Would you like to scope out the app first, or just start building?</div>
+      <div class="card"><div class="t">Help me scope it out</div><div>We talk through who it's for, the key screens, the data, and the look before anything gets built.</div></div>
+      <div class="card"><div class="t">Just start building</div><div>I make all the design and feature decisions and build the whole thing properly.</div></div>
+      <textarea id="own" placeholder="Write my own answer"></textarea>
+      <button type="button" id="cancel-q">Cancel</button>`;
+    messages.appendChild(q);
+    composer.classList.add("hidden");
+    const answered = async (answer) => {
+      q.querySelectorAll(".card, textarea, button").forEach((el) => el.remove());
+      composer.classList.remove("hidden");
+      add("user", answer);
+      await botSays(`Great, I'll go with: ${answer}.`);
+    };
+    q.querySelectorAll(".card").forEach((card) => card.addEventListener("click", () => answered(card.querySelector(".t").textContent)));
+    q.querySelector("#own").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey && e.target.value.trim()) {
+        e.preventDefault();
+        answered(e.target.value.trim());
+      }
+    });
+    q.querySelector("#cancel-q").addEventListener("click", () => {
+      q.remove();
+      composer.classList.remove("hidden");
+    });
+  }
+
   async function submit() {
     const text = box.innerText.trim();
     if (!text) return;
@@ -107,13 +157,12 @@
     box.textContent = "";
     if (/question/i.test(text)) {
       await botSays("I have a question before I start.");
-      composer.classList.add("hidden");
-      question.classList.remove("hidden");
+      ask();
     } else if (/plan/i.test(text)) {
       const el = await botSays("Here is my plan for the pricing page.");
       const card = document.createElement("div");
       card.className = "msg bot plan";
-      card.innerHTML = '<b>Plan: Pricing page</b><div class="plan-more">1. Add a Pricing page. 2. Add a three-tier pricing table.</div><button type="button" class="read-more">Read more</button> <button type="button" class="approve">Approve plan</button>';
+      card.innerHTML = '<div>Review plan</div><b>Plan: Pricing page</b><div class="plan-more">1. Add a Pricing page. 2. Add a three-tier pricing table.</div><button type="button" class="read-more">Read more</button><div>To request changes, describe them in the message box below, then send.</div><button type="button" class="approve">Approve plan</button>';
       card.querySelector(".read-more").onclick = () => card.querySelector(".plan-more").classList.add("open");
       card.querySelector(".approve").onclick = async () => {
         card.querySelector(".approve").remove();
@@ -136,16 +185,6 @@
   });
   stop.addEventListener("click", () => {
     stopped = true;
-  });
-  for (const opt of question.querySelectorAll(".opt")) opt.addEventListener("click", () => (picked = opt.textContent));
-  document.getElementById("submit-answers").addEventListener("click", async () => {
-    const own = document.getElementById("own").value.trim();
-    const answer = own || picked;
-    if (!answer) return;
-    question.classList.add("hidden");
-    composer.classList.remove("hidden");
-    add("user", `Answer: ${answer}`);
-    await botSays(`Great, I'll use ${answer} for the buttons.`);
   });
 </script>
 </body>

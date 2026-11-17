@@ -37,7 +37,7 @@ test("lists projects and opens one by name", async () => {
   const list = await driver.listProjects();
   assert.deepEqual(list.projects.map((p) => p.name), ["Demo Project", "Bakery Orders"]);
   const opened = await driver.openProject({ name: "Bakery Orders" });
-  assert.match(opened.url, /\/editor\/p2$/);
+  assert.match(opened.url, /\/editor\/p2\/page\/home$/);
   const s = await driver.status();
   assert.equal(s.place, "editor");
   assert.equal(s.chat_box_found, true);
@@ -62,6 +62,7 @@ test("multi-line messages arrive whole", async () => {
 });
 
 test("a plan: waits for approval, then Approve plan builds it", async () => {
+  await assert.rejects(driver.approvePlan(), /no plan waiting for approval/);
   const r = await driver.sendMessage("Make a plan for a pricing page", { waitMs: 60000 });
   assert.equal(r.state, "waiting_for_you");
   assert.match(r.waiting_for, /Approve plan/);
@@ -69,23 +70,48 @@ test("a plan: waits for approval, then Approve plan builds it", async () => {
   assert.match(r.reply, /Here is my plan/);
   assert.match(r.reply, /three-tier pricing table/); // "Read more" was expanded
   await assert.rejects(driver.choose({ labels: ["Publish"] }), /never clicks publish/);
-  const done = await driver.choose({ labels: ["Approve"], waitMs: 60000 });
+  const done = await driver.approvePlan({ waitMs: 60000 });
   assert.equal(done.state, "done");
   assert.match(done.reply, /I added the Pricing page/);
 });
 
-test("a question form: pick an option and submit, or write an answer", async () => {
+test("a question: answer cards and the Write my own answer box, like real Scram", async () => {
+  await assert.rejects(driver.answerQuestion("Blue"), /isn't asking a question/);
   const r = await driver.sendMessage("Ask me a question first", { waitMs: 60000 });
   assert.equal(r.state, "waiting_for_you");
-  assert.ok(r.choices.includes("Green") && r.choices.includes("Submit answers"), JSON.stringify(r.choices));
-  await assert.rejects(driver.sendMessage("hello"), /showing a question/);
-  const a = await driver.choose({ labels: ["Green"], waitMs: 60000 });
+  assert.ok(r.choices.some((c) => c.startsWith("Just start building (I make all the design")), JSON.stringify(r.choices));
+  assert.ok(r.choices.some((c) => c.startsWith("Help me scope it out (")), JSON.stringify(r.choices));
+  assert.ok(r.choices.includes("[text box] Write my own answer"), JSON.stringify(r.choices));
+  const a = await driver.answerQuestion("Just start building", { waitMs: 60000 });
   assert.equal(a.state, "done");
-  assert.match(a.reply, /I'll use Green/);
+  assert.match(a.reply, /I'll go with: Just start building/);
 
   await driver.sendMessage("Another question please", { waitMs: 60000 });
-  const b = await driver.choose({ text: "Purple with white text", waitMs: 60000 });
-  assert.match(b.reply, /I'll use Purple with white text/);
+  const b = await driver.answerQuestion("Purple buttons with white text", { waitMs: 60000 });
+  assert.equal(b.state, "done");
+  assert.match(b.reply, /I'll go with: Purple buttons with white text/);
+
+  await driver.sendMessage("One more question", { waitMs: 60000 });
+  const c = await driver.choose({ labels: ["Help me scope"], waitMs: 60000 });
+  assert.match(c.reply, /I'll go with: Help me scope it out/);
+});
+
+test("Run mode and Edit mode", async () => {
+  assert.equal((await driver.status()).mode, "edit");
+  const run = await driver.setMode("run");
+  assert.deepEqual(run, { mode: "run", changed: true });
+  assert.match(page.url(), /[?&]preview=run/);
+  assert.equal((await driver.status()).mode, "run");
+  assert.equal((await driver.setMode("run")).changed, false);
+  const edit = await driver.setMode("edit");
+  assert.deepEqual(edit, { mode: "edit", changed: true });
+  assert.doesNotMatch(page.url(), /preview=run/);
+  // Without the buttons (e.g. hidden behind something), it reopens the page with preview=run.
+  await page.evaluate(() => document.getElementById("modes").remove());
+  const viaUrl = await driver.setMode("run");
+  assert.equal(viaUrl.changed, true);
+  assert.match(page.url(), /[?&]preview=run/);
+  assert.equal((await driver.status()).chat_box_found, true);
 });
 
 test("a long message is typed in full", async () => {
@@ -106,8 +132,8 @@ test("stop, wait for reply and read chat", async () => {
   const w = await driver.waitForReply({ waitMs: 30000 });
   assert.equal(w.state, "done");
   assert.match(w.reply, /Working on it/);
-  const chat = await driver.readChat();
-  assert.match(chat, /Make the header blue/);
+  const chat = await driver.readChat({ maxChars: 50000 });
+  assert.match(chat, /Do something slow/); // (the Run-mode test reloaded the page, clearing older messages)
   assert.doesNotMatch(chat, /Internal reasoning/);
 });
 
@@ -121,7 +147,7 @@ test("screenshots of the window and of the running app", async () => {
 test("creates a new project", async () => {
   const r = await driver.newProject({});
   assert.equal(r.created, true);
-  assert.match(r.url, /\/editor\/new1$/);
+  assert.match(r.url, /\/editor\/new1\/page\/home$/);
 });
 
 test("one action at a time", async () => {

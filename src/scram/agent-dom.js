@@ -1456,3 +1456,37 @@
     ping: () => true,
   };
 })();
+
+// ---------------------------------------------------------------- ScramMCP additions
+// (Not in RoboBuild's copy.) Scram's answer options are cards, a bold title over a line of
+// description, that aren't real buttons, and are too long for snapshot()'s pointer pass. This
+// lists the clickable boxes in the AI chat column so they can be offered and clicked.
+(() => {
+  const dom = window.__sabDom;
+  if (!dom || dom.chatCards) return;
+  let next = 1;
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const cs = getComputedStyle(el);
+    return cs.visibility !== "hidden" && cs.display !== "none" && parseFloat(cs.opacity) > 0.05;
+  };
+  dom.chatCards = () => {
+    const col = dom.chatColumn();
+    const out = [];
+    for (const el of document.body.querySelectorAll("div,li,label,section,article,button,[role=button],[role=option],[role=radio]")) {
+      if (getComputedStyle(el).cursor !== "pointer") continue;
+      if (el.parentElement && getComputedStyle(el.parentElement).cursor === "pointer") continue; // outermost only
+      if (!visible(el)) continue;
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      if (cx < col.left - 2 || cx > col.right + 2 || r.top >= col.psTop - 4) continue;
+      const lines = (el.innerText || "").split("\n").map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean);
+      if (lines.length < 2 || lines.length > 6 || lines.join(" ").length > 400) continue; // a title + description
+      if (el.querySelector("textarea,input,[contenteditable=true]")) continue;
+      if (!el.dataset.sabId) el.dataset.sabId = `mcp${next++}`;
+      out.push({ id: el.dataset.sabId, title: lines[0], detail: lines.slice(1).join(" ") });
+    }
+    return out;
+  };
+})();

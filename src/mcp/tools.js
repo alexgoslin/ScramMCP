@@ -10,9 +10,9 @@ const INSTRUCTIONS = `Scram MCP drives Scram (an AI app builder) through Scram's
 How to build something:
 1. scram_status to see where the window is. If no project is open, use scram_open_project, scram_new_project or scram_list_projects.
 2. scram_send_message with a clear request for Scram's bot (what to build or change). It waits for the bot and returns its reply.
-3. The bot usually proposes a plan first and waits for approval: use scram_choose with "Approve plan" (or reply with corrections via scram_send_message). Questions from the bot are answered with scram_choose (pick options and/or write an answer).
+3. The bot usually proposes a plan first and waits for approval: use scram_approve_plan (or reply with corrections via scram_send_message). When the bot asks a question, answer it with scram_answer_question (an option's title, or your own words).
 4. If a reply says the bot is still working, call scram_wait_for_reply.
-5. scram_screenshot shows the editor (or the running app with area "app_preview").
+5. scram_run_mode shows the running app (the bot needs Run mode to test its work); scram_edit_mode goes back to editing. scram_screenshot shows the editor (or the running app with area "app_preview").
 
 Each request uses the user's Scram credits. Only one action runs at a time. Publishing to Live, deleting and billing are never done by this server: ask the user to do those in the window.`;
 
@@ -117,11 +117,63 @@ export function createScramMcpServer(driver, { version = "0.1.0", activity } = {
   );
 
   server.registerTool(
+    "scram_approve_plan",
+    {
+      title: "Approve Scram's plan",
+      description:
+        "Approve the plan Scram's bot is waiting on (clicks its “Approve plan” button), so it starts building. Then waits for the bot and returns its reply. To ask for changes to the plan instead, describe them with scram_send_message.",
+      inputSchema: z.object({ wait_seconds: waitSeconds }),
+      annotations: acts,
+    },
+    guard("scram_approve_plan", activity, async ({ wait_seconds }, ctx) =>
+      describeReply(await driver.approvePlan({ waitMs: (wait_seconds ?? 300) * 1000, ...waiting(ctx) }))
+    )
+  );
+
+  server.registerTool(
+    "scram_answer_question",
+    {
+      title: "Answer Scram's question",
+      description:
+        "Answer the question Scram's bot is asking. If the answer matches one of its options (by title, e.g. “Just start building”), that option is clicked; otherwise the answer is typed into its “Write my own answer” box and sent. Then waits for the bot and returns its reply. The options are listed in the reply that asked the question, and in scram_status.",
+      inputSchema: z.object({
+        answer: z.string().min(1).describe("An option's title, or your own answer in plain words."),
+        wait_seconds: waitSeconds,
+      }),
+      annotations: acts,
+    },
+    guard("scram_answer_question", activity, async ({ answer, wait_seconds }, ctx) =>
+      describeReply(await driver.answerQuestion(answer, { waitMs: (wait_seconds ?? 300) * 1000, ...waiting(ctx) }))
+    )
+  );
+
+  server.registerTool(
+    "scram_run_mode",
+    {
+      title: "Switch Scram to Run mode",
+      description:
+        "Switch Scram's editor to Run mode (the Run button, top right): the running app shows in the middle, and Scram's bot can click through it to test its work. Scram's bot can't switch modes itself.",
+      annotations: { ...acts, idempotentHint: true },
+    },
+    guard("scram_run_mode", activity, async () => json(await driver.setMode("run")))
+  );
+
+  server.registerTool(
+    "scram_edit_mode",
+    {
+      title: "Switch Scram to Edit mode",
+      description: "Switch Scram's editor to Edit mode (the Edit button, top right): the page canvas for editing instead of the running app.",
+      annotations: { ...acts, idempotentHint: true },
+    },
+    guard("scram_edit_mode", activity, async () => json(await driver.setMode("edit")))
+  );
+
+  server.registerTool(
     "scram_choose",
     {
-      title: "Answer Scram's bot",
+      title: "Click Scram's buttons",
       description:
-        'Click the buttons Scram\'s bot is showing in the chat, e.g. "Approve plan" or an answer option, and/or type a written answer into its answer box, then press its Submit button if there is one. Then waits for the bot and returns its reply. Labels can be partial ("Approve"). Never clicks publish, delete, share, billing or log-out controls.',
+        'For anything scram_approve_plan and scram_answer_question don\'t cover: click the buttons Scram\'s bot is showing in the chat, in order (e.g. several options of a multi-part question), and/or type a written answer, then press its Submit button if there is one. Then waits for the bot and returns its reply. Labels can be partial. Never clicks publish, delete, share, billing or log-out controls.',
       inputSchema: z.object({
         choices: z.array(z.string()).optional().describe('Labels of the buttons to click, in order, e.g. ["Approve plan"].'),
         text: z.string().optional().describe('A written answer, typed into the bot\'s answer box ("Write my own answer").'),
