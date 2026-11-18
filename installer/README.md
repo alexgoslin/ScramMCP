@@ -34,6 +34,8 @@ The workflow that builds them on GitHub is `.github/workflows/installers.yml`. G
 
 3. GitHub builds the Windows installer on a Windows machine and the Mac one on a Mac (about 10 minutes), then publishes both on the repo's **Releases** page with the notes from `RELEASE_NOTES.md`.
 
+Or do it all on GitHub's website: **Releases → Draft a new release → Choose a tag**, type a new tag such as `v0.3.0` (create it on `main`), give it a title, and click **Publish release**. The workflow then builds the installers and adds them to that release, along with the install notes if you left the description empty.
+
 To build without releasing, run the **Installers** workflow by hand from the repo's **Actions** tab. The installers then appear as downloadable artifacts on that run.
 
 ## Building on your own computer
