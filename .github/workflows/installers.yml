@@ -53,28 +53,21 @@ jobs:
           name: installer-${{ matrix.os }}
           path: ${{ matrix.files }}
           if-no-files-found: error
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: out
-          merge-multiple: true
-      - name: Publish the release
+      # Each installer goes onto the release as soon as it's built (Mac machines can take a
+      # while to free up; the Windows installer shouldn't wait for them).
+      - name: Add to the release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then TAG="$GITHUB_REF_NAME"; else TAG="v$(node -p "require('./package.json').version")"; fi
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            # Made on the website: add the installers, and the install notes if it has none.
-            gh release upload "$TAG" out/* --clobber
-            if [ -z "$(gh release view "$TAG" --json body -q .body)" ]; then
-              gh release edit "$TAG" --notes-file installer/RELEASE_NOTES.md
-            fi
-          else
-            gh release create "$TAG" out/* --target "$GITHUB_SHA" --title "Scram MCP $TAG" --notes-file installer/RELEASE_NOTES.md
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            # The other build may create it at the same moment: then just upload to theirs.
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "Scram MCP $TAG" --notes-file installer/RELEASE_NOTES.md || sleep 5
+          fi
+          gh release upload "$TAG" ${{ matrix.files }} --clobber
+          # Made on the website with no description: add the install notes.
+          if [ -z "$(gh release view "$TAG" --json body -q .body)" ]; then
+            gh release edit "$TAG" --notes-file installer/RELEASE_NOTES.md
           fi

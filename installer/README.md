@@ -36,7 +36,7 @@ The workflow that builds them on GitHub is `.github/workflows/installers.yml`. G
    git push origin v0.3.0
    ```
 
-3. GitHub builds the Windows installer on a Windows machine and the Mac one on a Mac (about 10 minutes), then publishes both on the repo's **Releases** page with the notes from `RELEASE_NOTES.md`.
+3. GitHub builds the Windows installer on a Windows machine and the Mac one on a Mac (about 10 minutes), and adds each to a release on the repo's **Releases** page as soon as it's built (with the notes from `RELEASE_NOTES.md`). Mac machines on GitHub are sometimes busy, so the Mac installer can appear later than the Windows one.
 
 Or do it all on GitHub's website: **Releases → Draft a new release → Choose a tag**, type a new tag such as `v0.3.0` (create it on `main`), give it a title, and click **Publish release**. The workflow then builds the installers and adds them to that release, along with the install notes if you left the description empty.
 
