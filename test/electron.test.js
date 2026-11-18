@@ -1,5 +1,7 @@
 // The real app: starts Electron (on a virtual screen if there's no display), pointed at the fake
 // Scram pages, connects an MCP client the way Claude Code would, and builds something.
+// SCRAM_MCP_TEST_BINARY=<path> runs a packaged build instead (e.g. after npm run dist:linux:
+// installer/dist/linux-unpacked/scram-mcp), to check the installer's app works too.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -11,7 +13,8 @@ import { join } from "node:path";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { startFakeScram } from "./fake-scram/server.js";
 
-const electronBin = execFileSync(process.execPath, ["-e", "process.stdout.write(require('electron'))"], { cwd: new URL("..", import.meta.url) }).toString();
+const packaged = process.env.SCRAM_MCP_TEST_BINARY;
+const electronBin = packaged || execFileSync(process.execPath, ["-e", "process.stdout.write(require('electron'))"], { cwd: new URL("..", import.meta.url) }).toString();
 const hasDisplay = process.platform !== "linux" || !!process.env.DISPLAY;
 const hasXvfb = (() => {
   try {
@@ -42,7 +45,7 @@ before(async () => {
   site = await startFakeScram();
   port = await freePort();
   userData = mkdtempSync(join(tmpdir(), "scram-mcp-test-"));
-  const args = [".", ...(process.getuid?.() === 0 ? ["--no-sandbox"] : [])];
+  const args = [...(packaged ? [] : ["."]), ...(process.getuid?.() === 0 ? ["--no-sandbox"] : [])];
   const [cmd, cmdArgs] = hasDisplay ? [electronBin, args] : ["xvfb-run", ["-a", electronBin, ...args]];
   proc = spawn(cmd, cmdArgs, {
     cwd: new URL("..", import.meta.url),
@@ -147,7 +150,7 @@ test("the Electron app serves MCP and builds through the chat", { skip, timeout:
 });
 
 test("starting it again doesn't start a second copy", { skip, timeout: 60000 }, async () => {
-  const args = [".", ...(process.getuid?.() === 0 ? ["--no-sandbox"] : [])];
+  const args = [...(packaged ? [] : ["."]), ...(process.getuid?.() === 0 ? ["--no-sandbox"] : [])];
   const [cmd, cmdArgs] = hasDisplay ? [electronBin, args] : ["xvfb-run", ["-a", electronBin, ...args]];
   const second = spawn(cmd, cmdArgs, {
     cwd: new URL("..", import.meta.url),

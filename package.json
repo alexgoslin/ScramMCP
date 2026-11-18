@@ -1,9 +1,24 @@
 {
   "name": "scram-mcp",
-  "version": "0.1.0",
+  "productName": "Scram MCP",
+  "version": "0.2.0",
+  "description": "Scram MCP: a desktop app that shows Scram and lets AI agents on your computer build in it through Scram's AI chat, over MCP.",
+  "author": "Scram MCP",
+  "homepage": "https://github.com/alexgoslin/ScramMCP",
   "private": true,
   "type": "module",
   "main": "src/main.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "fake-scram": "node test/fake-scram/server.js",
+    "dist:win": "electron-builder --config installer/electron-builder.yml --win --publish never",
+    "dist:mac": "electron-builder --config installer/electron-builder.yml --mac --publish never",
+    "dist:linux": "electron-builder --config installer/electron-builder.yml --linux --publish never"
+  },
   "dependencies": {
     "@modelcontextprotocol/fastify": "2.0.1",
     "@modelcontextprotocol/node": "2.1.2",
@@ -14,15 +29,7 @@
   "devDependencies": {
     "@modelcontextprotocol/client": "2.4.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "electron": "45.3.1"
-  },
-  "description": "Scram MCP: a desktop app that shows Scram and lets AI agents on your computer build in it through Scram's AI chat, over MCP.",
-  "engines": {
-    "node": ">=22"
-  },
-  "scripts": {
-    "start": "electron .",
-    "test": "node --test test/*.test.js",
-    "fake-scram": "node test/fake-scram/server.js"
+    "electron": "45.3.1",
+    "electron-builder": "26.18.0"
   }
 }

@@ -18,7 +18,11 @@ The agent doesn't get special access to Scram. It works the way a person does: i
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-## Setting it up
+## Installing it
+
+**The easy way:** download the installer for Windows (`.exe`) or Mac (`.dmg`) from the [Releases page](https://github.com/alexgoslin/ScramMCP/releases), install it, open **Scram MCP**, log in to Scram, and click **Scram MCP → Connect Claude Code**. See [`installer/README.md`](installer/README.md) for how the installers are built.
+
+## Running it from source
 
 You need [Node.js](https://nodejs.org/) 22 or newer.
 
@@ -43,10 +47,10 @@ npm start
 The first time, a window opens on Scram's dashboard, along with a box showing how to connect your agent.
 
 1. **Log in to Scram** in the window. The app remembers your login.
-2. **Connect your agent.** In the app's menu, choose **Scram MCP → Copy Claude Code command**, paste it into a terminal and run it. It looks like this, with your own token:
+2. **Connect your agent.** In the app's menu, click **Scram MCP → Connect Claude Code**, which runs the setup command for you. Or choose **Copy Claude Code command**, paste it into a terminal and run it. It looks like this, with your own token:
 
    ```bash
-   claude mcp add --transport http scram http://127.0.0.1:7777/mcp --header "Authorization: Bearer YOUR-TOKEN"
+   claude mcp add --transport http --scope user scram http://127.0.0.1:7777/mcp --header "Authorization: Bearer YOUR-TOKEN"
    ```
 
    For Cursor and other agents that use JSON settings, **Scram MCP → Connect an agent…** has a **Copy JSON** button. In VS Code's `mcp.json`, the top key is `servers` instead of `mcpServers`.
@@ -94,7 +98,7 @@ This is the first version.
 - **Listing projects is best effort.** Scram's dashboard isn't an API. Opening a project by its editor URL is the reliable way.
 - **Fast replies take about 15 seconds to come back.** When the bot answers too quickly for its Stop control to be seen, the app waits for 15 seconds of quiet before deciding it has finished.
 - **Claude Desktop** only takes local servers that start as a command, so it needs a bridge such as `mcp-remote`. This hasn't been tested.
-- **No installers yet.** Run it from source with `npm start`. Mac and Windows installers, code signing and auto-update are the next step.
+- **Installers aren't code-signed yet**, so Windows and macOS ask you to approve them once. There are no automatic updates yet either. See `installer/README.md`.
 
 ## For developers
 

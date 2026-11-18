@@ -1,0 +1,61 @@
+# Builds the Scram MCP installers with electron-builder:
+#   Windows: a one-click installer, Scram-MCP-Setup-<version>.exe (no admin rights needed; adds
+#            Scram MCP to the Start menu and desktop, and opens it when done).
+#   Mac:     a disk image, Scram-MCP-<version>-mac.dmg (one app for Intel and Apple-silicon Macs).
+# Run from the repo root (see installer/README.md):
+#   npm run dist:win     on Windows
+#   npm run dist:mac     on a Mac
+#   npm run dist:linux   anywhere: an unpacked Linux build, for checking the packaged app
+# GitHub builds both installers and publishes them when a version tag (v1.2.3) is pushed:
+# .github/workflows/installers.yml.
+
+appId: com.scrammcp.app
+productName: Scram MCP
+copyright: Scram MCP
+
+directories:
+  output: installer/dist
+  buildResources: installer/build # icon.png (1024×1024), made by installer/make-icon.mjs
+
+# Only the app itself (plus its production dependencies, added automatically): no tests or
+# installer files.
+files:
+  - src/**/*
+  - package.json
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: Scram-MCP-Setup-${version}.${ext}
+
+nsis:
+  oneClick: true # double-click installs straight away, no wizard
+  perMachine: false # installs for the current user: no admin rights needed
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Scram MCP
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false # keep the login and token if it's reinstalled
+
+mac:
+  target:
+    - target: dmg
+      arch: [universal]
+  category: public.app-category.developer-tools
+  # Ad-hoc signature: no Apple Developer certificate yet. macOS asks the user to approve the app
+  # once (System Settings → Privacy & Security → Open Anyway). With a certificate, set it here
+  # (or CSC_LINK / CSC_NAME) and add notarization.
+  identity: "-"
+  artifactName: Scram-MCP-${version}-mac.${ext}
+
+dmg:
+  title: Scram MCP
+
+linux:
+  target: [dir]
+  category: Development
+  executableName: scram-mcp
+
+publish: null

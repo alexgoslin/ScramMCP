@@ -5,6 +5,7 @@ import { app, BrowserWindow, Menu, clipboard, dialog, shell, session } from "ele
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig, connectInfo, newToken } from "./config.js";
+import { connectClaudeCode } from "./connect-claude.js";
 import { ScramDriver } from "./scram/driver.js";
 import { electronPage } from "./scram/electron-page.js";
 import { scramUrls } from "./scram/urls.js";
@@ -101,18 +102,53 @@ function copy(text, what) {
   dialog.showMessageBox(win, { type: "info", message: `${what} copied`, detail: "Paste it where you need it." });
 }
 
-function showConnectionDetails() {
-  if (!mcp) {
-    dialog.showMessageBox(win, { type: "warning", message: "The MCP server isn't running", detail: "See the error shown when the app started." });
+const CLAUDE_CODE_SETUP = "https://code.claude.com/docs/en/setup";
+
+// Connect Claude Code with one click: runs `claude mcp add …` (for all folders) with this app's
+// address and token. If Claude Code isn't installed, or the command fails, offers the command to
+// copy instead.
+async function connectClaude() {
+  if (!mcp) return showServerDown();
+  const { claudeCode } = connectInfo(mcp.url, config.token);
+  const result = await connectClaudeCode({ url: mcp.url, token: config.token });
+  if (result.ok) {
+    log(`Connected Claude Code (${result.claude}).`);
+    await dialog.showMessageBox(win, {
+      type: "info",
+      message: "Claude Code is connected to Scram MCP",
+      detail: "Start Claude Code (type claude in a terminal). If it's already open, restart it: type /exit, then claude.\n\nTo check, type /mcp in Claude Code: “scram” should show as connected. Keep this window open while Claude works in Scram.",
+    });
     return;
   }
+  log(`Couldn't connect Claude Code: ${result.reason} ${result.output || ""}`);
+  const notFound = result.reason === "not-found";
+  const { response } = await dialog.showMessageBox(win, {
+    type: "warning",
+    message: notFound ? "Claude Code isn't installed on this computer (or couldn't be found)" : "Claude Code couldn't add the connection",
+    detail: notFound
+      ? "Install Claude Code, then click Connect Claude Code again. Or copy the command and run it in a terminal yourself."
+      : `It said:\n${(result.output || "").slice(0, 600)}\n\nYou can copy the command and run it in a terminal yourself.`,
+    buttons: notFound ? ["Copy the command", "How to install Claude Code", "Close"] : ["Copy the command", "Close"],
+    defaultId: 0,
+    cancelId: notFound ? 2 : 1,
+  });
+  if (response === 0) copy(claudeCode, "Claude Code command");
+  if (notFound && response === 1) shell.openExternal(CLAUDE_CODE_SETUP);
+}
+
+function showServerDown() {
+  dialog.showMessageBox(win, { type: "warning", message: "The MCP server isn't running", detail: "See the error shown when the app started." });
+}
+
+function showConnectionDetails() {
+  if (!mcp) return showServerDown();
   const { claudeCode, json } = connectInfo(mcp.url, config.token);
   dialog.showMessageBox(win, {
     type: "info",
     message: "Connect an AI agent to Scram",
     detail: [
       "1. Log in to Scram in this window.",
-      "2. Connect your agent. For Claude Code, run this once in a terminal:",
+      "2. Connect your agent. For Claude Code, click Connect Claude Code (or run this once in a terminal):",
       "",
       claudeCode,
       "",
@@ -122,12 +158,13 @@ function showConnectionDetails() {
       "",
       "Keep the token private: anyone with it can use your Scram account through this app while it's open.",
     ].join("\n"),
-    buttons: ["Copy Claude Code command", "Copy JSON", "Close"],
+    buttons: ["Connect Claude Code", "Copy Claude Code command", "Copy JSON", "Close"],
     defaultId: 0,
-    cancelId: 2,
+    cancelId: 3,
   }).then(({ response }) => {
-    if (response === 0) copy(claudeCode, "Claude Code command");
-    if (response === 1) copy(json, "JSON settings");
+    if (response === 0) connectClaude();
+    if (response === 1) copy(claudeCode, "Claude Code command");
+    if (response === 2) copy(json, "JSON settings");
   });
 }
 
@@ -154,7 +191,8 @@ function buildMenu() {
     {
       label: APP_NAME,
       submenu: [
-        { label: "Connect an agent…", click: showConnectionDetails },
+        { label: "Connect Claude Code", click: connectClaude },
+        { label: "Connect another agent…", click: showConnectionDetails },
         { label: "Copy Claude Code command", click: () => mcp && copy(connectInfo(mcp.url, config.token).claudeCode, "Claude Code command") },
         { label: "Make a new token…", click: makeNewToken },
         { type: "separator" },

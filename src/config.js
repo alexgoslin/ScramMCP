@@ -34,7 +34,7 @@ export function loadConfig(dir) {
 
 // How to connect each kind of agent to this server.
 export function connectInfo(url, token) {
-  const claudeCode = `claude mcp add --transport http scram ${url} --header "Authorization: Bearer ${token}"`;
+  const claudeCode = `claude mcp add --transport http --scope user scram ${url} --header "Authorization: Bearer ${token}"`;
   const json = JSON.stringify({ mcpServers: { scram: { type: "http", url, headers: { Authorization: `Bearer ${token}` } } } }, null, 2);
   return { claudeCode, json };
 }
