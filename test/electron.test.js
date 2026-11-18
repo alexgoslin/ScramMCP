@@ -70,7 +70,7 @@ before(async () => {
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${TOKEN}` } } })
   );
-});
+}, { timeout: 180000 });
 
 after(async () => {
   await client?.close().catch(() => {});
@@ -87,7 +87,7 @@ after(async () => {
   }
   await site?.close();
   if (userData) rmSync(userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
-});
+}, { timeout: 60000 });
 
 const call = async (name, args = {}) => {
   const r = await client.callTool({ name, arguments: args });

@@ -14,7 +14,8 @@ export async function startFakeScram(port = 0) {
   });
   await new Promise((r) => server.listen(port, "127.0.0.1", r));
   const url = `http://127.0.0.1:${server.address().port}/`;
-  return { url, close: () => new Promise((r) => server.close(r)) };
+  // Closes at once, even if a browser still holds a connection open.
+  return { url, close: () => new Promise((r) => (server.close(r), server.closeAllConnections())) };
 }
 
 // `node test/fake-scram/server.js` runs it on its own (port 4599), for trying the app by hand.

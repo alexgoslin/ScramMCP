@@ -29,7 +29,9 @@ case "$(uname -s)" in
   MINGW* | MSYS* | CYGWIN*)
     exe=$(ls installer/dist/*.exe | head -1)
     echo "== Installing $exe silently (current user)"
-    "$exe" /S
+    # /currentuser: without it, a silent install may go for "everyone on this PC", which needs
+    # an admin prompt that nobody can answer on a build machine, and waits forever.
+    timeout 300 "$exe" /S /currentuser || { echo "The installer didn't finish within 5 minutes (or failed)." >&2; exit 1; }
     bin=$(node -e '
       const { existsSync } = require("fs");
       const { join } = require("path");
