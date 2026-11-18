@@ -1,6 +1,7 @@
 # Builds the Scram MCP installers with electron-builder:
-#   Windows: a one-click installer, Scram-MCP-Setup-<version>.exe (no admin rights needed; adds
-#            Scram MCP to the Start menu and desktop, and opens it when done).
+#   Windows: an installer wizard, Scram-MCP-Setup-<version>.exe: choose who it's for (just you,
+#            no admin rights needed, or everyone on the PC) and where to install it; it adds
+#            Scram MCP to the Start menu and desktop, and can open it when done.
 #   Mac:     a disk image, Scram-MCP-<version>-mac.dmg (one app for Intel and Apple-silicon Macs).
 # Run from the repo root (see installer/README.md):
 #   npm run dist:win     on Windows
@@ -31,12 +32,13 @@ win:
   artifactName: Scram-MCP-Setup-${version}.${ext}
 
 nsis:
-  oneClick: true # double-click installs straight away, no wizard
-  perMachine: false # installs for the current user: no admin rights needed
+  oneClick: false # a wizard, not an instant install
+  perMachine: false # the wizard asks: only for me (default, no admin) or anyone on this PC
+  allowToChangeInstallationDirectory: true # the wizard lets you choose the folder
   createDesktopShortcut: always
   createStartMenuShortcut: true
   shortcutName: Scram MCP
-  runAfterFinish: true
+  runAfterFinish: true # "Run Scram MCP" tick box on the last page
   deleteAppDataOnUninstall: false # keep the login and token if it's reinstalled
 
 mac:

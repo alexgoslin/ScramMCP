@@ -1,7 +1,7 @@
 {
   "name": "scram-mcp",
   "productName": "Scram MCP",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Scram MCP: a desktop app that shows Scram and lets AI agents on your computer build in it through Scram's AI chat, over MCP.",
   "author": "Scram MCP",
   "homepage": "https://github.com/alexgoslin/ScramMCP",

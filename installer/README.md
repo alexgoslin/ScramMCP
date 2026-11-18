@@ -2,7 +2,11 @@
 
 This folder turns Scram MCP into normal installable apps, so nobody needs Node.js, `npm` or a terminal to use it:
 
-- **Windows:** `Scram-MCP-Setup-<version>.exe`, a one-click installer. Double-click it and it installs for the current user (no admin rights needed), adds **Scram MCP** to the Start menu and desktop, and opens it.
+- **Windows:** `Scram-MCP-Setup-<version>.exe`, an installer wizard. Double-click it and it asks:
+  - who it's for: **Only for me** (the default, no admin rights needed) or **Anyone who uses this computer** (needs admin)
+  - where to install it (default `C:\Users\<you>\AppData\Local\Programs\Scram MCP`, or `C:\Program Files\Scram MCP` for everyone)
+
+  It then adds **Scram MCP** to the Start menu and desktop, and can open it when done.
 - **Mac:** `Scram-MCP-<version>-mac.dmg`. Open it and drag **Scram MCP** into Applications. It's one app for both Intel and Apple-silicon Macs.
 
 Once it's installed, the app's **Scram MCP → Connect Claude Code** menu item sets up Claude Code for you.
