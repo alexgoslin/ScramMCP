@@ -5,7 +5,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -77,7 +77,9 @@ after(async () => {
   if (proc) {
     const exited = proc.exitCode !== null ? Promise.resolve() : new Promise((r) => proc.once("exit", r));
     try {
-      process.kill(-proc.pid, "SIGTERM");
+      // The whole process tree: Electron's helpers, and xvfb-run on Linux.
+      if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(proc.pid), "/T", "/F"]);
+      else process.kill(-proc.pid, "SIGTERM");
     } catch {
       /* already gone */
     }

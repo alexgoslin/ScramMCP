@@ -19,6 +19,7 @@ Once it's installed, the app's **Scram MCP → Connect Claude Code** menu item s
 | `build/icon.png` | The app icon (1024×1024). electron-builder makes the Windows and Mac icons from it |
 | `make-icon.mjs` | Redraws `build/icon.png` (`node installer/make-icon.mjs`) |
 | `RELEASE_NOTES.md` | The install instructions shown on each GitHub release |
+| `test-packaged.sh` | Installs the built installer the way a user would (opens the Mac `.dmg`, or runs the Windows installer silently), checks the Mac signature, and runs the end-to-end test on the installed app. The workflow runs it before publishing anything |
 | `dist/` | Where built installers land (not saved in git) |
 
 The workflow that builds them on GitHub is `.github/workflows/installers.yml`. GitHub only reads workflows from that folder, so it can't live here.
@@ -52,14 +53,10 @@ From the repo root, after `npm install`:
 | `npm run dist:mac` | the Mac disk image | on a Mac only |
 | `npm run dist:linux` | an unpacked Linux build, for checking the packaged app | anywhere |
 
-To check a packaged build end to end with the tests:
+To check a build end to end, build it, then run the same check the workflow runs. On Windows, use Git Bash:
 
 ```bash
-npm run dist:linux
-```
-
-```bash
-SCRAM_MCP_TEST_BINARY=installer/dist/linux-unpacked/scram-mcp node --test test/electron.test.js
+bash installer/test-packaged.sh
 ```
 
 ## Code signing (not set up yet)
