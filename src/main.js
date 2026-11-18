@@ -1,7 +1,7 @@
 // Scram MCP: a desktop window showing Scram, plus a local MCP server that lets an AI agent on
 // this computer (Claude Code, Cursor…) work in it through Scram's own AI chat.
 
-import { app, BrowserWindow, Menu, clipboard, dialog, shell, session } from "electron";
+import { app, BrowserWindow, Menu, clipboard, dialog, powerSaveBlocker, shell, session } from "electron";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig, connectInfo, newToken } from "./config.js";
@@ -42,6 +42,18 @@ function log(msg) {
     appendFileSync(join(app.getPath("userData"), "scram-mcp.log"), `${line}\n`);
   } catch {
     /* logging must never break the app */
+  }
+}
+
+// While an agent's request is running (e.g. waiting for Scram's bot), keep the app from being
+// slowed down or suspended: macOS's App Nap throttles apps whose window isn't in front, which
+// would slow Scram's page (and its AI) right down. Released as soon as the request finishes.
+let awakeId = null;
+function stayAwake(on) {
+  if (on && awakeId === null) awakeId = powerSaveBlocker.start("prevent-app-suspension");
+  if (!on && awakeId !== null) {
+    powerSaveBlocker.stop(awakeId);
+    awakeId = null;
   }
 }
 
@@ -233,6 +245,7 @@ async function startServer(driver) {
           activity: (tool, started) => {
             busy = Math.max(0, busy + (started ? 1 : -1));
             if (started) log(`Agent called ${tool}.`);
+            stayAwake(busy > 0);
             updateTitle();
           },
         }),

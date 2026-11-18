@@ -540,7 +540,7 @@ export class ScramDriver {
     if (!stop) throw new ScramError("Scram's AI is working, but its stop button couldn't be found. Use scram_screenshot to see the window.");
     await this.click(stop);
     this.log("Pressed Scram's stop button.");
-    const stopped = await this.waitFor(async () => !(await this.working()), 10000);
+    const stopped = await this.waitFor(async () => !(await this.working()), 20000);
     return stopped ? { stopped: true } : { stopped: false, note: "Pressed the stop button, but Scram's AI still looks busy. Check with scram_screenshot." };
   }
 
