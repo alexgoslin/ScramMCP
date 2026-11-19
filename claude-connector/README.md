@@ -20,9 +20,11 @@ This folder builds the small program the **Claude desktop app** runs to use Scra
    - **There's no token in it.** The connector finds the token by itself.
    - **Everything else in the file is kept.** It's backed up once, as `claude_desktop_config.json.before-scram-desktop`, and a file Scram Desktop can't read is never touched.
    - **Where the file is:**
-     - Windows: `%APPDATA%\Claude\`. If Claude was installed as a Store/MSIX app, the copy in its package folder (`%LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming\Claude\`) is updated too.
+     - Windows: `%APPDATA%\Claude\`. A packaged (Store/MSIX) Claude reads its own copy instead, in a hidden package folder: `%LOCALAPPDATA%\Packages\<package>\LocalCache\Roaming\Claude\`. The package name isn't predictable, so every package with a `Roaming\Claude` folder gets the entry too.
      - Mac: `~/Library/Application Support/Claude/`.
+   - In Claude, it shows under **Settings → Desktop app → Extensions → Local MCP servers**.
 2. **Restarts Claude**, if it's open and the user agrees, because Claude only reads the file when it starts.
+3. **Confirms it worked.** Each time Claude starts the connector, the connector leaves a note, `claude-connector-started.json`, next to Scram Desktop's settings. (With a packaged Claude, the note may be redirected into Claude's package folder, so both places are checked.) Scram Desktop waits for that note: then it says **Connected**. If the note never appears, it shows where it wrote the entry, to compare with Claude's **Edit config**.
    - Windows: ends `claude.exe` (closing its window only hides it in the system tray), then starts Claude the way the Start menu does.
    - Mac: quits Claude and opens it again.
 
@@ -39,7 +41,7 @@ Claude desktop app ──stdio──▶ connector (index.mjs, run by Scram Deskt
 
 - **It reads the port and token each time** from Scram Desktop's settings file: `%APPDATA%\Scram Desktop\config.json` on Windows, `~/Library/Application Support/Scram Desktop/config.json` on a Mac. So a new token (**Make a new token…**) is picked up by itself.
 - **The tool list is built in** (`tools.json`), so Claude shows Scram's tools even while Scram Desktop is closed.
-- **It opens Scram Desktop if needed.** If Scram Desktop is closed when Claude uses a tool, the connector starts it, using the same program that's running the connector, and waits for it.
+- **It opens Scram Desktop if needed.** If Scram Desktop is closed when Claude uses a tool, the connector starts it, using the same program that's running the connector, and waits for it. On Windows, it starts it through Explorer, so Scram Desktop doesn't run inside a packaged Claude's environment.
 - **Waits are short.** The Claude app gives up on a tool call after about a minute, so calls that wait for Scram's bot wait at most 50 seconds (40 by default). The tools say so, and Claude then calls `scram_wait_for_reply` to keep waiting.
 
 ## Building and testing

@@ -17,7 +17,7 @@ import { Client as V1Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport as V1StdioTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { startMcpHttp } from "../src/mcp/http.js";
 import { createScramMcpServer } from "../src/mcp/tools.js";
-import { connectorEntry } from "../src/connect-claude-app.js";
+import { connectorEntry, connectorStartedSince, CONNECTOR_NOTE } from "../src/connect-claude-app.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const built = join(root, "claude-connector", "dist");
@@ -60,8 +60,10 @@ async function connect(how = asClaudeWould()) {
 }
 const text = (r) => r.content[0].text;
 
-test("run by Scram Desktop's own program (as Node.js): lists the tools, waits capped", async () => {
+test("run by Scram Desktop's own program (as Node.js): lists the tools, waits capped, leaves its note", async () => {
+  const since = Date.now();
   const c = await connect();
+  assert.ok(connectorStartedSince([join(dir, CONNECTOR_NOTE)], since), "the connector left its 'started' note next to Scram Desktop's settings");
   const { tools } = await c.listTools();
   assert.equal(tools.length, 14);
   assert.equal(tools.find((t) => t.name === "scram_send_message").inputSchema.properties.wait_seconds.maximum, 50);

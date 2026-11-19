@@ -17,9 +17,9 @@
 // Built into dist/index.mjs (with tools.json next to it) by claude-connector/build.mjs.
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Server } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
@@ -85,7 +85,10 @@ function launchScramDesktop() {
       const env = { ...process.env };
       delete env.ELECTRON_RUN_AS_NODE;
       delete env.SCRAM_DESKTOP_APP_RUNS_CONNECTOR;
-      spawn(process.execPath, [], { detached: true, stdio: "ignore", env }).unref();
+      // On Windows, start it through Explorer (like double-clicking it), so it doesn't run inside a
+      // packaged Claude app's environment, where its files could be redirected.
+      if (process.platform === "win32") spawn("explorer.exe", [process.execPath], { detached: true, stdio: "ignore", env }).unref();
+      else spawn(process.execPath, [], { detached: true, stdio: "ignore", env }).unref();
       return true;
     }
     if (process.platform === "darwin") {
@@ -99,7 +102,7 @@ function launchScramDesktop() {
       ];
       const exe = places.find((p) => existsSync(p));
       if (!exe) return false;
-      spawn(exe, [], { detached: true, stdio: "ignore" }).unref();
+      spawn("explorer.exe", [exe], { detached: true, stdio: "ignore" }).unref();
       return true;
     }
   } catch {
@@ -217,6 +220,14 @@ function createBridgeServer() {
   });
 
   return server;
+}
+
+// Tell Scram Desktop that Claude has started the connector (its "Connect the Claude desktop app"
+// waits for this note to confirm the connection worked).
+try {
+  writeFileSync(join(dirname(configPath()), "claude-connector-started.json"), JSON.stringify({ started: new Date().toISOString(), pid: process.pid, version: VERSION }));
+} catch {
+  /* Scram Desktop hasn't run yet: nothing to tell */
 }
 
 serveStdio(() => createBridgeServer());

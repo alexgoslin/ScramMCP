@@ -78,7 +78,7 @@ The Scram Desktop window shows Scram as you know it. **Log in as usual.** Scram 
 
    ![Screenshot 7: the Scram Desktop menu with "Connect the Claude desktop app" highlighted](images/07-connect-menu.png)
 
-3. If Claude is open, Scram Desktop asks to restart it, because Claude only picks up new connections when it starts. Click **Restart Claude**.
+3. If Claude is open, Scram Desktop asks to restart it, because Claude only picks up new connections when it starts. Click **Restart Claude**. Scram Desktop then waits until Claude has picked it up and says **"Connected"**.
 
    ![Screenshot 8: the "Restart the Claude app to finish" message](images/08-restart-claude.png)
 
@@ -141,7 +141,7 @@ Claude never **publishes** your app, **deletes** anything, or touches **sharing,
 
 | What you see | What to do |
 |---|---|
-| **Claude desktop app:** Claude doesn't seem to know about Scram | Quit the Claude app completely (Windows: right-click its icon by the clock → **Quit**; Mac: **Claude → Quit Claude**) and open it again, then start a new chat. If that doesn't help, click **Connect the Claude desktop app** in Scram Desktop again. In Claude, **Settings → Developer** should list **scram**. |
+| **Claude desktop app:** Claude doesn't seem to know about Scram | Quit the Claude app completely (Windows: right-click its icon by the clock → **Quit**; Mac: **Claude → Quit Claude**) and open it again, then start a new chat. If that doesn't help, click **Connect the Claude desktop app** in Scram Desktop again. In Claude, **Settings → Desktop app → Extensions → Local MCP servers** should list **scram**. |
 | **Claude Code:** Claude says it can't reach Scram, or "scram" isn't in its list of tools | Make sure Scram Desktop is open. Then, in Claude Code, type `/mcp` and check **scram** says *connected*. If it doesn't, click **Connect Claude Code** in Scram Desktop again, then restart Claude Code (type `/exit`, then `claude`). |
 | Claude says you need to log in | Log in to Scram in the Scram Desktop window. |
 | Nothing happens when you open Scram Desktop | It may already be running in the background. Restart your computer, or on Windows end **Scram Desktop** in Task Manager, then open it again. |

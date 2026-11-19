@@ -6,7 +6,7 @@ import { appendFileSync, cpSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig, connectInfo, newToken } from "./config.js";
 import { connectClaudeCode } from "./connect-claude.js";
-import { addToClaudeConfig, claudeAppFound, claudeConfigFiles, claudeRunning, connectorEntry, restartClaude } from "./connect-claude-app.js";
+import { addToClaudeConfig, claudeAppFound, claudeConfigFiles, claudeRunning, connectorEntry, connectorNotePlaces, restartClaude, waitForConnector } from "./connect-claude-app.js";
 import { ScramDriver } from "./scram/driver.js";
 import { electronPage } from "./scram/electron-page.js";
 import { scramUrls } from "./scram/urls.js";
@@ -172,15 +172,21 @@ async function connectClaudeApp() {
     dialog.showErrorBox("Part of Scram Desktop is missing", app.isPackaged ? "Reinstall Scram Desktop." : "Build it first: npm run build:connector");
     return;
   }
-  const result = addToClaudeConfig(claudeConfigFiles(), connectorEntry({ execPath: process.execPath, connectorPath: connector, installed: app.isPackaged }));
-  log(`Connect the Claude desktop app: changed ${result.changed.length}, unchanged ${result.unchanged.length}, failed ${result.failed.length}.`);
+  const files = claudeConfigFiles();
+  const result = addToClaudeConfig(files, connectorEntry({ execPath: process.execPath, connectorPath: connector, installed: app.isPackaged }));
+  log(`Connect the Claude desktop app: wrote ${result.changed.join(", ") || "-"}; already there ${result.unchanged.join(", ") || "-"}; failed ${result.failed.map((f) => f.file).join(", ") || "-"}.`);
   if (!result.changed.length && !result.unchanged.length) {
     dialog.showErrorBox("Couldn't connect the Claude desktop app", result.failed.map((f) => `${f.reason}.\n(${f.file})`).join("\n\n"));
     return;
   }
+  const notes = connectorNotePlaces(app.getPath("userData"), files);
+  const since = Date.now();
+  const quit = process.platform === "darwin" ? "Claude menu \u2192 Quit Claude" : "right-click its icon by the clock \u2192 Quit";
   const done = "Start a new chat in Claude and ask it to do something in Scram, for example \u201cUse Scram to add a contact page to my project\u201d. Keep this window open while Claude works in Scram.";
+
   if (!(await claudeRunning())) {
-    await dialog.showMessageBox(win, { type: "info", message: "The Claude desktop app is connected", detail: `Open the Claude app. ${done}` });
+    watchForConnector(notes, since);
+    await dialog.showMessageBox(win, { type: "info", message: "Now open the Claude app", detail: `Scram Desktop is in the Claude app's settings. Open Claude, and Scram Desktop will tell you when Claude has picked it up. ${done}` });
     return;
   }
   const { response } = await dialog.showMessageBox(win, {
@@ -191,24 +197,62 @@ async function connectClaudeApp() {
     defaultId: 0,
     cancelId: 1,
   });
-  if (response !== 0) {
+  if (response !== 0 || !(await restartClaude())) {
+    watchForConnector(notes, since);
     await dialog.showMessageBox(win, {
-      type: "info",
-      message: "Restart Claude when you're ready",
-      detail: `Quit the Claude app completely (${process.platform === "darwin" ? "Claude menu \u2192 Quit Claude" : "right-click its icon by the clock \u2192 Quit"}), then open it again. ${done}`,
+      type: response !== 0 ? "info" : "warning",
+      message: response !== 0 ? "Restart Claude when you're ready" : "Couldn't restart Claude by itself",
+      detail: `Quit the Claude app completely (${quit}), then open it again. Scram Desktop will tell you when Claude has picked it up. ${done}`,
     });
     return;
   }
-  if (await restartClaude()) {
-    log("Restarted the Claude app.");
-    await dialog.showMessageBox(win, { type: "info", message: "The Claude desktop app is connected", detail: done });
+  log("Restarted the Claude app; waiting for it to start Scram Desktop's connector.");
+  if (await waitForConnector(notes, since, 60000)) {
+    log("Claude started Scram Desktop's connector.");
+    await dialog.showMessageBox(win, { type: "info", message: "Connected: Claude is using Scram Desktop", detail: done });
   } else {
-    await dialog.showMessageBox(win, {
-      type: "warning",
-      message: "Couldn't restart Claude by itself",
-      detail: `Scram Desktop is connected, but Claude needs a restart: quit it completely (${process.platform === "darwin" ? "Claude menu \u2192 Quit Claude" : "right-click its icon by the clock \u2192 Quit"}) and open it again. ${done}`,
-    });
+    await claudeDidntPickItUp(result);
   }
+}
+
+// After the person restarts Claude themselves: say so when Claude has picked Scram Desktop up.
+let watching = false;
+async function watchForConnector(notes, since) {
+  if (watching) return;
+  watching = true;
+  try {
+    if (await waitForConnector(notes, since, 10 * 60000)) {
+      log("Claude started Scram Desktop's connector.");
+      await dialog.showMessageBox(win, {
+        type: "info",
+        message: "Connected: Claude is using Scram Desktop",
+        detail: "Start a new chat in Claude and ask it to do something in Scram. Keep this window open while Claude works in Scram.",
+      });
+    }
+  } finally {
+    watching = false;
+  }
+}
+
+// Claude restarted but never started the connector: say exactly where the entry went, so it can
+// be checked against where Claude's "Edit config" opens.
+async function claudeDidntPickItUp(result) {
+  log("Claude restarted but didn't start Scram Desktop's connector within a minute.");
+  const written = [...result.changed, ...result.unchanged];
+  const { response } = await dialog.showMessageBox(win, {
+    type: "warning",
+    message: "Claude restarted, but hasn't picked up Scram Desktop",
+    detail: [
+      "Scram Desktop added itself to:",
+      ...written.map((f) => `\u2022 ${f}`),
+      "",
+      "In Claude, open Settings \u2192 Desktop app \u2192 Extensions. Under \u201cLocal MCP servers\u201d, scram should be listed. If it says \u201cNo servers added\u201d, click Edit config: if that opens a different file from the ones above, send a screenshot of it to the Scram team.",
+    ].join("\n"),
+    buttons: ["Show the file", "Close"],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (response === 0 && written[0]) shell.showItemInFolder(written[0]);
 }
 
 // First run: which Claude (or other assistant) do you use?

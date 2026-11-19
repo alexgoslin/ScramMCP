@@ -12,8 +12,10 @@ import { dirname, join } from "node:path";
 export const SERVER_NAME = "scram";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Claude's settings file(s). On Windows, Claude installed as a Store/MSIX app keeps its AppData
-// inside its package folder, so that copy is updated too when it exists.
+// Claude's settings file(s). On Windows, Claude installed as a packaged (Store/MSIX) app keeps its
+// AppData in a hidden package folder (%LOCALAPPDATA%\Packages\<name>\LocalCache\Roaming\Claude),
+// and reads its settings from there rather than from %APPDATA%\Claude. The package folder's name
+// isn't predictable, so every package with a Roaming\Claude folder counts.
 export function claudeConfigFiles({ platform = process.platform, env = process.env, home = homedir() } = {}) {
   if (platform === "darwin") return [join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json")];
   if (platform === "win32") {
@@ -21,7 +23,8 @@ export function claudeConfigFiles({ platform = process.platform, env = process.e
     const local = env.LOCALAPPDATA || join(home, "AppData", "Local");
     const files = [join(appData, "Claude", "claude_desktop_config.json")];
     for (const pkg of safeList(join(local, "Packages"))) {
-      if (/^(Anthropic\w*\.)?Claude_/i.test(pkg)) files.push(join(local, "Packages", pkg, "LocalCache", "Roaming", "Claude", "claude_desktop_config.json"));
+      const dir = join(local, "Packages", pkg, "LocalCache", "Roaming", "Claude");
+      if (existsSync(dir)) files.push(join(dir, "claude_desktop_config.json"));
     }
     return files;
   }
@@ -45,7 +48,7 @@ export function claudeAppFound({ platform = process.platform, env = process.env,
         ? [join(env.LOCALAPPDATA || join(home, "AppData", "Local"), "AnthropicClaude"), join(env.APPDATA || join(home, "AppData", "Roaming"), "Claude")]
         : [join(env.XDG_CONFIG_HOME || join(home, ".config"), "Claude")];
   if (places.some((p) => existsSync(p))) return true;
-  return claudeConfigFiles({ platform, env, home }).slice(1).length > 0; // a Store/MSIX install
+  return claudeConfigFiles({ platform, env, home }).length > 1; // a packaged (Store/MSIX) install
 }
 
 // The entry: Scram Desktop's program, run as Node.js, running the connector. When it's the
@@ -63,7 +66,7 @@ export function connectorEntry({ execPath, connectorPath, installed }) {
 export function addToClaudeConfig(files, entry) {
   const result = { changed: [], unchanged: [], failed: [] };
   files.forEach((file, i) => {
-    if (i > 0 && !existsSync(dirname(file))) return; // a Store-install copy that isn't there
+    if (i > 0 && !existsSync(dirname(file))) return; // a packaged-install folder that isn't there
     let config = {};
     if (existsSync(file)) {
       const text = readFileSync(file, "utf8");
@@ -148,4 +151,31 @@ async function waitUntil(check, ms) {
     await sleep(500);
   }
   return check();
+}
+
+// ------------------------------------------------------------------ did Claude pick it up?
+
+// The connector leaves this note in Scram Desktop's settings folder each time Claude starts it,
+// so Scram Desktop can tell for sure that Claude has picked up the connection.
+// (On Windows, when Claude is a packaged app, files written by programs it starts can be
+// redirected into Claude's package folder, so the note is looked for there too.)
+export const CONNECTOR_NOTE = "claude-connector-started.json";
+
+export function connectorNotePlaces(settingsDir, claudeFiles = claudeConfigFiles()) {
+  const packaged = claudeFiles.slice(1).map((f) => join(dirname(dirname(f)), "Scram Desktop"));
+  return [settingsDir, ...packaged].map((d) => join(d, CONNECTOR_NOTE));
+}
+
+export function connectorStartedSince(places, since) {
+  return places.some((file) => {
+    try {
+      return Date.parse(JSON.parse(readFileSync(file, "utf8")).started) >= since;
+    } catch {
+      return false;
+    }
+  });
+}
+
+export async function waitForConnector(places, since, ms = 60000) {
+  return waitUntil(async () => connectorStartedSince(places, since), ms);
 }

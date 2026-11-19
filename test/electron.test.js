@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { startFakeScram } from "./fake-scram/server.js";
-import { connectorEntry } from "../src/connect-claude-app.js";
+import { connectorEntry, connectorStartedSince, CONNECTOR_NOTE } from "../src/connect-claude-app.js";
 
 const packaged = process.env.SCRAM_MCP_TEST_BINARY;
 const electronBin = packaged || execFileSync(process.execPath, ["-e", "process.stdout.write(require('electron'))"], { cwd: new URL("..", import.meta.url) }).toString();
@@ -253,6 +253,7 @@ test("Connect the Claude desktop app: Claude's entry reaches the running app, wi
     assert.ok(up, "Scram Desktop didn't start");
     // The pretend Claude app runs Claude's entry; nobody gives it the token.
     assert.doesNotMatch(JSON.stringify(entry), /token-only-the-app-knows/);
+    const since = Date.now();
     const c = new Client({ name: "pretend-claude-app", version: "1.0.0" });
     await c.connect(
       new StdioClientTransport({
@@ -268,6 +269,8 @@ test("Connect the Claude desktop app: Claude's entry reaches the running app, wi
       await sleep(500);
     }
     assert.equal(status.place, "dashboard");
+    // The note Scram Desktop waits for, to say "Connected".
+    assert.ok(connectorStartedSince([join(data, CONNECTOR_NOTE)], since));
     await c.close();
   } finally {
     try {
