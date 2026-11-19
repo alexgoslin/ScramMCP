@@ -1,4 +1,4 @@
-# Builds the Scram MCP installers on real Windows and Mac machines, and puts them on the repo's
+# Builds the Scram Desktop installers on real Windows and Mac machines, and puts them on the repo's
 # Releases page:
 #   - push a version tag (e.g. v0.2.0): it creates the release with the installers, or
 #   - publish a release on GitHub's website (Releases → Draft a new release → a new v… tag):
@@ -70,7 +70,7 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then TAG="$GITHUB_REF_NAME"; else TAG="v$(node -p "require('./package.json').version")"; fi
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             # The other build may create it at the same moment: then just upload to theirs.
-            gh release create "$TAG" --target "$GITHUB_SHA" --title "Scram MCP $TAG" --notes-file installer/RELEASE_NOTES.md || sleep 5
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "Scram Desktop $TAG" --notes-file installer/RELEASE_NOTES.md || sleep 5
           fi
           gh release upload "$TAG" ${{ matrix.files }} --clobber
           # Made on the website with no description: add the install notes.

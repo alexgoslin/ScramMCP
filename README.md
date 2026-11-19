@@ -1,4 +1,4 @@
-# Scram MCP
+# Scram Desktop
 
 A desktop app that shows Scram in a window and lets an AI agent on the same computer (Claude Code, Cursor, VS Code…) build apps in it over **MCP**.
 
@@ -8,19 +8,19 @@ The agent doesn't get special access to Scram. It works the way a person does: i
  Claude Code on your computer
         │  scram_send_message("Add a pricing page")
         ▼
-┌──────────────────────── Scram MCP (Electron) ────────────────────────┐
+┌────────────────────── Scram Desktop (Electron) ──────────────────────┐
 │ MCP server: official MCP SDK v2 + Fastify, on 127.0.0.1 only         │
-│        │                                                            │
-│        ▼                                                            │
-│ Window: the real Scram editor, logged in as you.                    │
-│ The app types into the AI chat, presses send, waits for the bot,    │
-│ and reads its reply.                                                │
+│        │                                                             │
+│        ▼                                                             │
+│ Window: the real Scram editor, logged in as you.                     │
+│ The app types into the AI chat, presses send, waits for the bot,     │
+│ and reads its reply.                                                 │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Installing it
 
-**The easy way:** download the installer for Windows (`.exe`) or Mac (`.dmg`) from the [Releases page](https://github.com/alexgoslin/ScramMCP/releases), install it, open **Scram MCP**, log in to Scram, and click **Scram MCP → Connect Claude Code**. See [`installer/README.md`](installer/README.md) for how the installers are built.
+**The easy way:** download the installer for Windows (`.exe`) or Mac (`.dmg`) from the [Releases page](https://github.com/alexgoslin/ScramMCP/releases), install it, open **Scram Desktop**, log in to Scram, and click **Scram Desktop → Connect Claude Code**. See [`installer/README.md`](installer/README.md) for how the installers are built.
 
 ## Running it from source
 
@@ -42,18 +42,18 @@ npm install
 npm start
 ```
 
-**On Windows** you can skip the terminal: download the ZIP from GitHub (green **Code** button → **Download ZIP**), unzip it, and double-click **`Start Scram MCP.cmd`**. The first time, it runs `npm install` for you. It also avoids a `spawn UNKNOWN` error that `npm start` hits on some Windows PCs.
+**On Windows** you can skip the terminal: download the ZIP from GitHub (green **Code** button → **Download ZIP**), unzip it, and double-click **`Start Scram Desktop.cmd`**. The first time, it runs `npm install` for you. It also avoids a `spawn UNKNOWN` error that `npm start` hits on some Windows PCs.
 
 The first time, a window opens on Scram's dashboard, along with a box showing how to connect your agent.
 
 1. **Log in to Scram** in the window. The app remembers your login.
-2. **Connect your agent.** In the app's menu, click **Scram MCP → Connect Claude Code**, which runs the setup command for you. Or choose **Copy Claude Code command**, paste it into a terminal and run it. It looks like this, with your own token:
+2. **Connect your agent.** In the app's menu, click **Scram Desktop → Connect Claude Code**, which runs the setup command for you. Or choose **Copy Claude Code command**, paste it into a terminal and run it. It looks like this, with your own token:
 
    ```bash
    claude mcp add --transport http --scope user scram http://127.0.0.1:7777/mcp --header "Authorization: Bearer YOUR-TOKEN"
    ```
 
-   For Cursor and other agents that use JSON settings, **Scram MCP → Connect an agent…** has a **Copy JSON** button. In VS Code's `mcp.json`, the top key is `servers` instead of `mcpServers`.
+   For Cursor and other agents that use JSON settings, **Scram Desktop → Connect an agent…** has a **Copy JSON** button. In VS Code's `mcp.json`, the top key is `servers` instead of `mcpServers`.
 
 3. **Ask your agent to build something**, for example:
 
@@ -85,7 +85,7 @@ Waiting calls give up after 5 minutes by default (`wait_seconds` changes it). If
 ## Safety
 
 - **Local only.** The server listens on `127.0.0.1`, so nothing on the internet can reach it. It also rejects requests whose `Host` or `Origin` isn't localhost, so a website open in your browser can't talk to it.
-- **Secret token.** Every request needs the app's token. Without it, other programs on your computer can't use your Scram account through the app. **Scram MCP → Make a new token…** replaces it.
+- **Secret token.** Every request needs the app's token. Without it, other programs on your computer can't use your Scram account through the app. **Scram Desktop → Make a new token…** replaces it.
 - **Never clicks** Publish, delete, share, billing or log-out controls, even if asked. Publishing to Live stays a human job.
 - **One action at a time.** Scram has one chat, so a second request waits instead of mixing into the first.
 - **Credits.** Every message to Scram's bot uses your Scram credits, the same as typing it yourself.

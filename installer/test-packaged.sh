@@ -3,7 +3,7 @@
 # (test/electron.test.js: MCP, the chat, plans, questions, stop, Run/Edit mode, screenshots,
 # against the fake Scram page) on the INSTALLED app. The Installers workflow runs this on
 # GitHub's Windows and Mac machines before publishing anything.
-#   Mac:     opens the .dmg, copies Scram MCP.app out, checks its signature, runs it.
+#   Mac:     opens the .dmg, copies Scram Desktop.app out, checks its signature, runs it.
 #   Windows: runs the installer silently (for the current user), runs the installed app.
 #   Linux:   runs the unpacked build from `npm run dist:linux`.
 set -euo pipefail
@@ -15,16 +15,16 @@ case "$(uname -s)" in
     mnt=$(mktemp -d)
     hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt" >/dev/null
     apps=$(mktemp -d)
-    cp -R "$mnt/Scram MCP.app" "$apps/"
+    cp -R "$mnt/Scram Desktop.app" "$apps/"
     hdiutil detach "$mnt" >/dev/null
-    app="$apps/Scram MCP.app"
+    app="$apps/Scram Desktop.app"
     echo "== Signature (Apple-silicon Macs only run apps with a valid one; ad-hoc is fine):"
     codesign --verify --deep --strict --verbose=2 "$app"
     codesign -dv "$app" 2>&1 | grep -E "^(Format|Signature|Identifier)" || true
-    lipo -archs "$app/Contents/MacOS/Scram MCP"
+    lipo -archs "$app/Contents/MacOS/Scram Desktop"
     echo "== Gatekeeper (expected to say rejected until there's an Apple Developer ID):"
     spctl --assess --type execute -vv "$app" 2>&1 || true
-    bin="$app/Contents/MacOS/Scram MCP"
+    bin="$app/Contents/MacOS/Scram Desktop"
     ;;
   MINGW* | MSYS* | CYGWIN*)
     exe=$(ls installer/dist/*.exe | head -1)
@@ -35,18 +35,18 @@ case "$(uname -s)" in
     bin=$(node -e '
       const { existsSync } = require("fs");
       const { join } = require("path");
-      const places = [join(process.env.LOCALAPPDATA, "Programs", "Scram MCP"), join(process.env.LOCALAPPDATA, "Programs", "scram-mcp"), join(process.env.ProgramFiles, "Scram MCP")];
+      const places = [join(process.env.LOCALAPPDATA, "Programs", "Scram Desktop"), join(process.env.LOCALAPPDATA, "Programs", "scram-desktop"), join(process.env.ProgramFiles, "Scram Desktop")];
       const end = Date.now() + 60000;
       (function look() {
-        const hit = places.map((p) => join(p, "Scram MCP.exe")).find(existsSync);
+        const hit = places.map((p) => join(p, "Scram Desktop.exe")).find(existsSync);
         if (hit) return console.log(hit);
-        if (Date.now() > end) { console.error("Scram MCP.exe not found after installing in: " + places.join(", ")); process.exit(1); }
+        if (Date.now() > end) { console.error("Scram Desktop.exe not found after installing in: " + places.join(", ")); process.exit(1); }
         setTimeout(look, 1000);
       })();')
     echo "== Installed at $bin"
     ;;
   Linux)
-    bin=installer/dist/linux-unpacked/scram-mcp
+    bin=installer/dist/linux-unpacked/scram-desktop
     ;;
 esac
 

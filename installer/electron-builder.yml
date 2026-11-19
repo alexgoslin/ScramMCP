@@ -1,8 +1,8 @@
-# Builds the Scram MCP installers with electron-builder:
-#   Windows: an installer wizard, Scram-MCP-Setup-<version>.exe: choose who it's for (just you,
+# Builds the Scram Desktop installers with electron-builder:
+#   Windows: an installer wizard, Scram-Desktop-Setup-<version>.exe: choose who it's for (just you,
 #            no admin rights needed, or everyone on the PC) and where to install it; it adds
-#            Scram MCP to the Start menu and desktop, and can open it when done.
-#   Mac:     a disk image, Scram-MCP-<version>-mac.dmg (one app for Intel and Apple-silicon Macs).
+#            Scram Desktop to the Start menu and desktop, and can open it when done.
+#   Mac:     a disk image, Scram-Desktop-<version>-mac.dmg (one app for Intel and Apple-silicon Macs).
 # Run from the repo root (see installer/README.md):
 #   npm run dist:win     on Windows
 #   npm run dist:mac     on a Mac
@@ -10,13 +10,13 @@
 # GitHub builds both installers and publishes them when a version tag (v1.2.3) is pushed:
 # .github/workflows/installers.yml.
 
-appId: com.scrammcp.app
-productName: Scram MCP
-copyright: Scram MCP
+appId: com.scram.desktop
+productName: Scram Desktop
+copyright: Copyright © Scram Software Limited
 
 directories:
   output: installer/dist
-  buildResources: installer/build # icon.png (1024×1024), made by installer/make-icon.mjs
+  buildResources: installer/build # icon.png / icon-mac.png from the Scram logo: installer/make-icons.py
 
 # Only the app itself (plus its production dependencies, added automatically): no tests or
 # installer files.
@@ -29,7 +29,7 @@ win:
   target:
     - target: nsis
       arch: [x64]
-  artifactName: Scram-MCP-Setup-${version}.${ext}
+  artifactName: Scram-Desktop-Setup-${version}.${ext}
 
 nsis:
   oneClick: false # a wizard, not an instant install
@@ -37,11 +37,12 @@ nsis:
   allowToChangeInstallationDirectory: true # the wizard lets you choose the folder
   createDesktopShortcut: always
   createStartMenuShortcut: true
-  shortcutName: Scram MCP
-  runAfterFinish: true # "Run Scram MCP" tick box on the last page
+  shortcutName: Scram Desktop
+  runAfterFinish: true # "Run Scram Desktop" tick box on the last page
   deleteAppDataOnUninstall: false # keep the login and token if it's reinstalled
 
 mac:
+  icon: installer/build/icon-mac.png # the logo on a white rounded tile, the usual Mac icon shape
   target:
     - target: dmg
       arch: [universal]
@@ -50,14 +51,14 @@ mac:
   # once (System Settings → Privacy & Security → Open Anyway). With a certificate, set it here
   # (or CSC_LINK / CSC_NAME) and add notarization.
   identity: "-"
-  artifactName: Scram-MCP-${version}-mac.${ext}
+  artifactName: Scram-Desktop-${version}-mac.${ext}
 
 dmg:
-  title: Scram MCP
+  title: Scram Desktop
 
 linux:
   target: [dir]
   category: Development
-  executableName: scram-mcp
+  executableName: scram-desktop
 
 publish: null

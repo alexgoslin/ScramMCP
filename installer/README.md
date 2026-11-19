@@ -1,23 +1,24 @@
-# Scram MCP installers
+# Scram Desktop installers
 
-This folder turns Scram MCP into normal installable apps, so nobody needs Node.js, `npm` or a terminal to use it:
+This folder turns Scram Desktop into normal installable apps, so nobody needs Node.js, `npm` or a terminal to use it:
 
-- **Windows:** `Scram-MCP-Setup-<version>.exe`, an installer wizard. Double-click it and it asks:
+- **Windows:** `Scram-Desktop-Setup-<version>.exe`, an installer wizard. Double-click it and it asks:
   - who it's for: **Only for me** (the default, no admin rights needed) or **Anyone who uses this computer** (needs admin)
-  - where to install it (default `C:\Users\<you>\AppData\Local\Programs\Scram MCP`, or `C:\Program Files\Scram MCP` for everyone)
+  - where to install it (default `C:\Users\<you>\AppData\Local\Programs\Scram Desktop`, or `C:\Program Files\Scram Desktop` for everyone)
 
-  It then adds **Scram MCP** to the Start menu and desktop, and can open it when done.
-- **Mac:** `Scram-MCP-<version>-mac.dmg`. Open it and drag **Scram MCP** into Applications. It's one app for both Intel and Apple-silicon Macs.
+  It then adds **Scram Desktop** to the Start menu and desktop, and can open it when done.
+- **Mac:** `Scram-Desktop-<version>-mac.dmg`. Open it and drag **Scram Desktop** into Applications. It's one app for both Intel and Apple-silicon Macs.
 
-Once it's installed, the app's **Scram MCP → Connect Claude Code** menu item sets up Claude Code for you.
+Once it's installed, the app's **Scram Desktop → Connect Claude Code** menu item sets up Claude Code for you.
 
 ## What's in here
 
 | File | What it is |
 | --- | --- |
 | `electron-builder.yml` | The packaging settings (electron-builder): what goes in the app, the installer types, names and shortcuts |
-| `build/icon.png` | The app icon (1024×1024). electron-builder makes the Windows and Mac icons from it |
-| `make-icon.mjs` | Redraws `build/icon.png` (`node installer/make-icon.mjs`) |
+| `build/scram-logo.png` | The Scram logo (green, transparent background, white insides) |
+| `build/icon.png`, `build/icon-mac.png` | The app icons made from it (1024×1024): the logo as it is for Windows, and on a white rounded tile for the Mac. electron-builder turns them into `.ico` and `.icns` |
+| `make-icons.py` | Remakes both icons from the logo (`python3 installer/make-icons.py`, needs Pillow) |
 | `RELEASE_NOTES.md` | The install instructions shown on each GitHub release |
 | `test-packaged.sh` | Installs the built installer the way a user would (opens the Mac `.dmg`, or runs the Windows installer silently), checks the Mac signature, and runs the end-to-end test on the installed app. The workflow runs it before publishing anything |
 | `dist/` | Where built installers land (not saved in git) |
@@ -73,6 +74,6 @@ Signing removes those steps:
 
 ## Notes
 
-- The installed app keeps its settings, token and Scram login in its own folder: `%APPDATA%\Scram MCP` on Windows, `~/Library/Application Support/Scram MCP` on a Mac. Uninstalling keeps them, so a reinstall stays logged in.
-- If you've been running Scram MCP from source before, the installed app may start with a new token. Click **Connect Claude Code** once to update Claude Code.
+- The installed app keeps its settings, token and Scram login in its own folder: `%APPDATA%\Scram Desktop` on Windows, `~/Library/Application Support/Scram Desktop` on a Mac. Uninstalling keeps them, so a reinstall stays logged in.
+- If you've been running Scram Desktop from source before, the installed app may start with a new token. Click **Connect Claude Code** once to update Claude Code.
 - There are no automatic updates yet: install a newer version over the old one. (Auto-update on Mac needs the app to be signed.)

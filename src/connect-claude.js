@@ -26,7 +26,7 @@ function run(file, args, env) {
   });
 }
 
-// Adds Scram MCP to Claude Code for this user (all folders), replacing an older "scram" entry
+// Adds Scram Desktop to Claude Code for this user (all folders), replacing an older "scram" entry
 // (e.g. one with an old token). Returns { ok, claude } or { ok: false, reason, output }.
 export async function connectClaudeCode({ url, token, env = process.env, ...where } = {}) {
   const claude = findClaude({ env, ...where });

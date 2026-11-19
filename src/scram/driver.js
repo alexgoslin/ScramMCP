@@ -134,7 +134,7 @@ export class ScramDriver {
 
   async ensureLoggedIn() {
     if (await this.loginNeeded()) {
-      throw new ScramError("Scram needs you to log in. Log in in the Scram MCP window, then try again.");
+      throw new ScramError("Scram needs you to log in. Log in in the Scram Desktop window, then try again.");
     }
   }
 
@@ -336,7 +336,7 @@ export class ScramDriver {
         throw new ScramError(
           reason
             ? `Couldn't find Scram's chat box: Scram is showing a question (${reason}). Answer it with scram_choose first.`
-            : "Couldn't find Scram's AI chat box in the editor. Check the Scram MCP window (the chat may be closed or covered)."
+            : "Couldn't find Scram's AI chat box in the editor. Check the Scram Desktop window (the chat may be closed or covered)."
         );
       }
       await this.try("scrollChatToBottom");
@@ -392,13 +392,13 @@ export class ScramDriver {
       await Promise.resolve(attempt()).catch(() => {});
       for (let i = 0; i < 10 && (await stillThere()); i++) await sleep(150);
     }
-    if (await stillThere()) throw new ScramError("Typed the message into Scram's chat, but couldn't press send. Check the Scram MCP window.");
+    if (await stillThere()) throw new ScramError("Typed the message into Scram's chat, but couldn't press send. Check the Scram Desktop window.");
   }
 
   // A long message as an attached .md file, if Scram's chat takes one this way. True if the
   // file shows up in the chat.
   async attachAsFile(inputId, text) {
-    const name = `scram-mcp-message-${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}.md`;
+    const name = `scram-desktop-message-${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}.md`;
     for (const method of ["file-input", "drop-input", "drop-container", "paste"]) {
       const r = await this.try("attachVia", method, inputId, name, text);
       if (!r?.ok) continue;
@@ -437,7 +437,7 @@ export class ScramDriver {
       await this.try("scrollChatToBottom");
       const before = (await this.try("chatReadable"))?.text || "";
       for (const label of labels) {
-        if (NEVER_CLICK.test(label)) throw new ScramError(`Not clicking “${label}”: Scram MCP never clicks publish, delete, share, billing or log-out controls.`);
+        if (NEVER_CLICK.test(label)) throw new ScramError(`Not clicking “${label}”: Scram Desktop never clicks publish, delete, share, billing or log-out controls.`);
         const choices = await this.choices();
         const c = pickChoice(choices, label);
         if (!c) {
@@ -678,7 +678,7 @@ export class ScramDriver {
         throw new ScramError("Give the project's editor URL or its name.");
       }
       await this.ensureLoggedIn();
-      if (!(await this.waitForEditor(60000))) throw new ScramError("The project didn't open in the editor within a minute. Check the Scram MCP window.");
+      if (!(await this.waitForEditor(60000))) throw new ScramError("The project didn't open in the editor within a minute. Check the Scram Desktop window.");
       this.baseline = null;
       this.sent = "";
       return { opened: true, url: this.page.url(), title: await this.page.title() };
@@ -697,7 +697,7 @@ export class ScramDriver {
       await this.click(card);
       this.log("Clicked “Create new project”.");
       // Scram takes ~20s to create the project, then opens its editor by itself.
-      if (!(await this.waitForEditor(150000))) throw new ScramError("Scram didn't open the new project's editor within 2½ minutes. Check the Scram MCP window.");
+      if (!(await this.waitForEditor(150000))) throw new ScramError("Scram didn't open the new project's editor within 2½ minutes. Check the Scram Desktop window.");
       this.baseline = null;
       this.sent = "";
       const out = { created: true, url: this.page.url() };

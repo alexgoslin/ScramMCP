@@ -1,6 +1,6 @@
 // Copied from RoboBuild (alexgoslin/ScramAutoBot, content/agent-dom.js). Keep it in step with that
 // file: it holds what we know about Scram's editor DOM (chat box, send button, Stop control…).
-// ScramMCP injects it into the editor window's isolated world, so Scram's own code never sees it.
+// Scram Desktop injects it into the editor window's isolated world, so Scram's own code never sees it.
 
 // Injected into tabs by the service worker (chrome.scripting, isolated world).
 // Exposes window.__sabDom: read the page (snapshot / extract / text) and act on
@@ -1457,7 +1457,7 @@
   };
 })();
 
-// ---------------------------------------------------------------- ScramMCP additions
+// ---------------------------------------------------------------- Scram Desktop additions
 // (Not in RoboBuild's copy.) Scram's answer options are cards, a bold title over a line of
 // description, that aren't real buttons, and are too long for snapshot()'s pointer pass. This
 // lists the clickable boxes in the AI chat column so they can be offered and clicked.

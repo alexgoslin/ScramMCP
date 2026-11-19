@@ -36,7 +36,7 @@ export async function startMcpHttp({ port, token: tokenOrFn, factory, log = () =
       log("Refused an MCP request without the right token.");
       reply.code(401).send({
         jsonrpc: "2.0",
-        error: { code: -32001, message: "Scram MCP: missing or wrong token. Copy the connect command from the Scram MCP app's menu." },
+        error: { code: -32001, message: "Scram Desktop: missing or wrong token. Copy the connect command from the Scram Desktop app's menu." },
         id: null,
       });
       return reply;
@@ -49,7 +49,7 @@ export async function startMcpHttp({ port, token: tokenOrFn, factory, log = () =
   });
 
   // A plain page so people (and the app) can check the server is up. Tells nothing about Scram.
-  app.get("/", async () => ({ name: "Scram MCP", mcp: `/mcp` }));
+  app.get("/", async () => ({ name: "Scram Desktop", mcp: `/mcp` }));
 
   await app.listen({ port, host: HOST });
   const address = app.server.address();

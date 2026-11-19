@@ -5,7 +5,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
 import { ScramError } from "../scram/driver.js";
 
-const INSTRUCTIONS = `Scram MCP drives Scram (an AI app builder) through Scram's own AI chat, in a desktop window on the user's computer that is logged in as the user.
+const INSTRUCTIONS = `Scram Desktop drives Scram (an AI app builder) through Scram's own AI chat, in a desktop window on the user's computer that is logged in as the user.
 
 How to build something:
 1. scram_status to see where the window is. If no project is open, use scram_open_project, scram_new_project or scram_list_projects.
@@ -62,7 +62,7 @@ function guard(name, activity, fn) {
     try {
       return await fn(args || {}, ctx);
     } catch (e) {
-      const msg = e instanceof ScramError ? e.message : `Something went wrong in Scram MCP: ${e?.message || e}`;
+      const msg = e instanceof ScramError ? e.message : `Something went wrong in Scram Desktop: ${e?.message || e}`;
       return { ...text(msg), isError: true };
     } finally {
       activity?.(name, false);
@@ -80,7 +80,7 @@ export function createScramMcpServer(driver, { version = "0.1.0", activity } = {
     {
       title: "Scram status",
       description:
-        "Where the Scram MCP window is (dashboard, a project's editor, a login page), whether you're logged in, whether Scram's bot is working or waiting for an answer, and the choices it's showing.",
+        "Where the Scram Desktop window is (dashboard, a project's editor, a login page), whether you're logged in, whether Scram's bot is working or waiting for an answer, and the choices it's showing.",
       annotations: readOnly,
     },
     guard("scram_status", activity, async () => json(await driver.status()))
@@ -251,7 +251,7 @@ export function createScramMcpServer(driver, { version = "0.1.0", activity } = {
     "scram_screenshot",
     {
       title: "Screenshot Scram",
-      description: 'A picture of the Scram MCP window ("window", the default) or just the running app\'s preview in Run mode ("app_preview").',
+      description: 'A picture of the Scram Desktop window ("window", the default) or just the running app\'s preview in Run mode ("app_preview").',
       inputSchema: z.object({ area: z.enum(["window", "app_preview"]).optional() }),
       annotations: readOnly,
     },

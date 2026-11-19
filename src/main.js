@@ -1,8 +1,8 @@
-// Scram MCP: a desktop window showing Scram, plus a local MCP server that lets an AI agent on
+// Scram Desktop: a desktop window showing Scram, plus a local MCP server that lets an AI agent on
 // this computer (Claude Code, Cursor…) work in it through Scram's own AI chat.
 
 import { app, BrowserWindow, Menu, clipboard, dialog, powerSaveBlocker, shell, session } from "electron";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig, connectInfo, newToken } from "./config.js";
 import { connectClaudeCode } from "./connect-claude.js";
@@ -12,19 +12,39 @@ import { scramUrls } from "./scram/urls.js";
 import { startMcpHttp } from "./mcp/http.js";
 import { createScramMcpServer } from "./mcp/tools.js";
 
-const APP_NAME = "Scram MCP";
+const APP_NAME = "Scram Desktop";
 const PARTITION = "persist:scram"; // keeps you logged in to Scram between runs
 
 app.setName(APP_NAME);
+// Settings, token and Scram login live in "<app data>/Scram Desktop" (the same when run from
+// source and installed).
+if (process.env.SCRAM_MCP_APP_DATA) app.setPath("appData", process.env.SCRAM_MCP_APP_DATA); // tests
 if (process.env.SCRAM_MCP_USER_DATA) app.setPath("userData", process.env.SCRAM_MCP_USER_DATA);
+else app.setPath("userData", join(app.getPath("appData"), APP_NAME));
+moveOldSettings();
 // Some login pages (e.g. Google's) refuse browsers that call themselves Electron.
-app.userAgentFallback = app.userAgentFallback.replace(/ Electron\/\S+/, "").replace(/ scram-mcp\/\S+/i, "");
+app.userAgentFallback = app.userAgentFallback.replace(/ Electron\/\S+/, "").replace(/ scram[- ]?(mcp|desktop)\/\S+/gi, "");
+
+// Scram Desktop used to be called Scram MCP. On its first run, bring over Scram MCP's settings,
+// token and Scram login, so nobody has to log in or reconnect their agent again. (Not the
+// files that mark a running copy, which would belong to the old app.)
+function moveOldSettings() {
+  try {
+    const now = app.getPath("userData");
+    const old = ["Scram MCP", "scram-mcp"].map((n) => join(app.getPath("appData"), n)).find((d) => existsSync(join(d, "config.json")));
+    if (process.env.SCRAM_MCP_USER_DATA || existsSync(now) || !old) return;
+    const skip = /^(Singleton(Lock|Socket|Cookie)|lockfile|.*\.log)$/;
+    cpSync(old, now, { recursive: true, filter: (src) => !skip.test(src.split(/[\\/]/).pop()) });
+  } catch {
+    /* start fresh instead */
+  }
+}
 
 // Only one copy runs (there's one port and one Scram window). Starting it again shows the
 // running copy's window instead.
 const firstCopy = app.requestSingleInstanceLock();
 if (!firstCopy) {
-  console.log("Scram MCP is already running: showing its window.");
+  console.log("Scram Desktop is already running: showing its window.");
   app.quit();
 }
 
@@ -39,7 +59,7 @@ function log(msg) {
   const line = `${new Date().toISOString()} ${msg}`;
   console.log(line);
   try {
-    appendFileSync(join(app.getPath("userData"), "scram-mcp.log"), `${line}\n`);
+    appendFileSync(join(app.getPath("userData"), "scram-desktop.log"), `${line}\n`);
   } catch {
     /* logging must never break the app */
   }
@@ -127,7 +147,7 @@ async function connectClaude() {
     log(`Connected Claude Code (${result.claude}).`);
     await dialog.showMessageBox(win, {
       type: "info",
-      message: "Claude Code is connected to Scram MCP",
+      message: "Claude Code is connected to Scram Desktop",
       detail: "Start Claude Code (type claude in a terminal). If it's already open, restart it: type /exit, then claude.\n\nTo check, type /mcp in Claude Code: “scram” should show as connected. Keep this window open while Claude works in Scram.",
     });
     return;
@@ -209,7 +229,7 @@ function buildMenu() {
         { label: "Make a new token…", click: makeNewToken },
         { type: "separator" },
         { label: "Go to Scram dashboard", click: () => win?.loadURL(urls.home) },
-        { label: "Show log file", click: () => shell.showItemInFolder(join(app.getPath("userData"), "scram-mcp.log")) },
+        { label: "Show log file", click: () => shell.showItemInFolder(join(app.getPath("userData"), "scram-desktop.log")) },
         ...(isMac ? [] : [{ type: "separator" }, { role: "quit" }]),
       ],
     },
@@ -256,7 +276,7 @@ async function startServer(driver) {
     dialog.showErrorBox(
       "The MCP server didn't start",
       e.code === "EADDRINUSE"
-        ? `Port ${config.port} is already in use. Is Scram MCP already open? To use another port, start the app with SCRAM_MCP_PORT set (e.g. 7778).`
+        ? `Port ${config.port} is already in use. Is Scram Desktop already open? To use another port, start the app with SCRAM_MCP_PORT set (e.g. 7778).`
         : e.message
     );
   }

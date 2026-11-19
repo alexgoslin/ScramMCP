@@ -17,7 +17,7 @@ export function electronPage(getWin) {
   };
   const wc = () => {
     const win = current();
-    if (!win) throw new Error("The Scram MCP window is closed.");
+    if (!win) throw new Error("The Scram Desktop window is closed.");
     return win.webContents;
   };
   const run = (code) => wc().executeJavaScriptInIsolatedWorld(WORLD_ID, [{ code }]);

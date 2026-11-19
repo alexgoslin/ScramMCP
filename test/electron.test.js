@@ -1,12 +1,12 @@
 // The real app: starts Electron (on a virtual screen if there's no display), pointed at the fake
 // Scram pages, connects an MCP client the way Claude Code would, and builds something.
 // SCRAM_MCP_TEST_BINARY=<path> runs a packaged build instead (e.g. after npm run dist:linux:
-// installer/dist/linux-unpacked/scram-mcp), to check the installer's app works too.
+// installer/dist/linux-unpacked/scram-desktop), to check the installer's app works too.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync, execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -44,7 +44,7 @@ before(async () => {
   if (skip) return;
   site = await startFakeScram();
   port = await freePort();
-  userData = mkdtempSync(join(tmpdir(), "scram-mcp-test-"));
+  userData = mkdtempSync(join(tmpdir(), "scram-desktop-test-"));
   const args = [...(packaged ? [] : ["."]), ...(process.getuid?.() === 0 ? ["--no-sandbox"] : [])];
   const [cmd, cmdArgs] = hasDisplay ? [electronBin, args] : ["xvfb-run", ["-a", electronBin, ...args]];
   proc = spawn(cmd, cmdArgs, {
@@ -165,4 +165,51 @@ test("starting it again doesn't start a second copy", { skip, timeout: 60000 }, 
   assert.match(out, /already running/);
   // The first copy still answers.
   assert.match(textOf(await call("scram_status")), /"place"/);
+});
+
+test("brings over Scram MCP's settings (token, login) on its first run as Scram Desktop", { skip, timeout: 90000 }, async () => {
+  const appData = mkdtempSync(join(tmpdir(), "scram-desktop-appdata-"));
+  const old = join(appData, "Scram MCP");
+  mkdirSync(join(old, "Partitions", "scram"), { recursive: true });
+  const oldPort = await freePort();
+  writeFileSync(join(old, "config.json"), JSON.stringify({ port: oldPort, token: "old-token-from-scram-mcp", welcomed: true }));
+  writeFileSync(join(old, "Partitions", "scram", "Cookies"), "pretend login");
+  writeFileSync(join(old, "SingletonLock"), "belongs to the old app");
+  const args = [...(packaged ? [] : ["."]), ...(process.getuid?.() === 0 ? ["--no-sandbox"] : [])];
+  const [cmd, cmdArgs] = hasDisplay ? [electronBin, args] : ["xvfb-run", ["-a", electronBin, ...args]];
+  const env = { ...process.env, SCRAM_MCP_DEV_HOME: site.url, SCRAM_MCP_APP_DATA: appData, SCRAM_MCP_NO_WELCOME: "1" };
+  delete env.SCRAM_MCP_PORT;
+  delete env.SCRAM_MCP_TOKEN;
+  delete env.SCRAM_MCP_USER_DATA;
+  const third = spawn(cmd, cmdArgs, { cwd: new URL("..", import.meta.url), detached: true, env });
+  try {
+    let up = false;
+    for (let i = 0; i < 120 && !up; i++) {
+      up = await fetch(`http://127.0.0.1:${oldPort}/`).then((r) => r.ok).catch(() => false);
+      if (!up) await sleep(500);
+    }
+    assert.ok(up, "Scram Desktop didn't start on the old app's port");
+    const c = new Client({ name: "migration-test", version: "1.0.0" });
+    await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${oldPort}/mcp`), { requestInit: { headers: { Authorization: "Bearer old-token-from-scram-mcp" } } }));
+    assert.ok((await c.listTools()).tools.length > 5); // the old token still works
+    await c.close();
+    const now = join(appData, "Scram Desktop");
+    assert.equal(JSON.parse(readFileSync(join(now, "config.json"), "utf8")).token, "old-token-from-scram-mcp");
+    assert.ok(existsSync(join(now, "Partitions", "scram", "Cookies")), "the Scram login (cookies) came over");
+    assert.ok(!existsSync(join(now, "SingletonLock")) || readFileSync(join(now, "SingletonLock"), "utf8") !== "belongs to the old app");
+  } finally {
+    try {
+      if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(third.pid), "/T", "/F"]);
+      else process.kill(-third.pid, "SIGTERM");
+    } catch {
+      /* gone */
+    }
+    await Promise.race([new Promise((r) => third.once("exit", r)), sleep(10000)]);
+    await sleep(1000); // Electron's helper processes can still be writing their files
+    try {
+      rmSync(appData, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+    } catch {
+      /* a leftover temp folder is harmless */
+    }
+  }
 });
