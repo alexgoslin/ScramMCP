@@ -173,7 +173,9 @@ test("brings over Scram MCP's settings (token, login) on its first run as Scram 
   mkdirSync(join(old, "Partitions", "scram"), { recursive: true });
   const oldPort = await freePort();
   writeFileSync(join(old, "config.json"), JSON.stringify({ port: oldPort, token: "old-token-from-scram-mcp", welcomed: true }));
-  writeFileSync(join(old, "Partitions", "scram", "Cookies"), "pretend login");
+  // Stands in for the Scram login (the partition's cookies and storage). Not "Cookies" itself:
+  // on Windows, Chromium moves that file into a Network subfolder when it starts.
+  writeFileSync(join(old, "Partitions", "scram", "login-marker.txt"), "pretend login");
   writeFileSync(join(old, "SingletonLock"), "belongs to the old app");
   const args = [...(packaged ? [] : ["."]), ...(process.getuid?.() === 0 ? ["--no-sandbox"] : [])];
   const [cmd, cmdArgs] = hasDisplay ? [electronBin, args] : ["xvfb-run", ["-a", electronBin, ...args]];
@@ -195,7 +197,7 @@ test("brings over Scram MCP's settings (token, login) on its first run as Scram 
     await c.close();
     const now = join(appData, "Scram Desktop");
     assert.equal(JSON.parse(readFileSync(join(now, "config.json"), "utf8")).token, "old-token-from-scram-mcp");
-    assert.ok(existsSync(join(now, "Partitions", "scram", "Cookies")), "the Scram login (cookies) came over");
+    assert.ok(existsSync(join(now, "Partitions", "scram", "login-marker.txt")), "the Scram login (the partition) came over");
     assert.ok(!existsSync(join(now, "SingletonLock")) || readFileSync(join(now, "SingletonLock"), "utf8") !== "belongs to the old app");
   } finally {
     try {
