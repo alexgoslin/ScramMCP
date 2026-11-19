@@ -2,8 +2,9 @@
 // this computer (Claude Code, Cursor…) work in it through Scram's own AI chat.
 
 import { app, BrowserWindow, Menu, clipboard, dialog, powerSaveBlocker, shell, session } from "electron";
-import { appendFileSync, cpSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { execFile } from "node:child_process";
+import { appendFileSync, copyFileSync, cpSync, existsSync } from "node:fs";
+import { basename, join } from "node:path";
 import { loadConfig, connectInfo, newToken } from "./config.js";
 import { connectClaudeCode } from "./connect-claude.js";
 import { ScramDriver } from "./scram/driver.js";
@@ -143,37 +144,65 @@ function claudeExtensionFile() {
   return app.isPackaged ? join(process.resourcesPath, "scram-desktop.mcpb") : join(app.getAppPath(), "extension", "dist", "scram-desktop.mcpb");
 }
 
-// Connect the Claude desktop app: open the extension file, which the Claude app shows with an
-// Install button. The extension finds this app's address and token by itself (from this app's
-// settings file), so nobody sees or pastes the token.
+// Connect the Claude desktop app with the extension (it finds this app's address and token by
+// itself, from this app's settings file, so nobody sees or pastes the token).
+//   Mac: open the file with the Claude app ("open -a Claude"), which shows its Install button.
+//   Windows: the Claude app doesn't always tell Windows it opens .mcpb files (then Windows asks
+//   which program to use), so put the file in Downloads and show how to add it in Claude:
+//   drag it onto Claude, or Settings → Extensions → Install Extension.
 async function connectClaudeApp() {
   const file = claudeExtensionFile();
   if (!existsSync(file)) {
     dialog.showErrorBox("The Claude extension is missing", app.isPackaged ? "Reinstall Scram Desktop." : "Build it first: npm run build:extension");
     return;
   }
-  const failed = await shell.openPath(file);
-  if (!failed) {
-    log("Opened the Claude desktop app extension.");
+  if (process.platform === "darwin" && (await runQuietly("open", ["-a", "Claude", file]))) {
+    log("Opened the Claude extension in the Claude app.");
     await dialog.showMessageBox(win, {
       type: "info",
       message: "Now click Install in the Claude app",
       detail:
-        "The Claude desktop app should now show \u201cScram Desktop\u201d with an Install button. Click Install.\n\nThen start a new chat in Claude and ask it to do something in Scram, for example \u201cUse Scram to add a contact page to my project\u201d. Keep this window open while Claude works in Scram.\n\nIf the Claude app didn't open, check it's installed and up to date, then try again.",
+        "The Claude app should now show \u201cScram Desktop\u201d with an Install button. Click Install.\n\nThen start a new chat in Claude and ask it to do something in Scram, for example \u201cUse Scram to add a contact page to my project\u201d. Keep this window open while Claude works in Scram.",
     });
     return;
   }
-  log(`Couldn't open the Claude extension: ${failed}`);
+  await addInClaudeYourself(file);
+}
+
+// The file goes in Downloads, where it's easy to find, and the steps to add it in Claude.
+async function addInClaudeYourself(file) {
+  let copy = file;
+  try {
+    copy = join(app.getPath("downloads"), "Scram Desktop for Claude.mcpb");
+    copyFileSync(file, copy);
+  } catch {
+    copy = file;
+  }
+  log(`Showing how to add the Claude extension by hand (${copy}).`);
   const { response } = await dialog.showMessageBox(win, {
-    type: "warning",
-    message: "Couldn't open the extension in the Claude app",
-    detail: `Is the Claude desktop app installed?\n\nYou can also add it yourself: drag the file \u201cscram-desktop.mcpb\u201d onto the Claude app, or in the Claude app open Settings \u2192 Extensions and install it from there. \u201cShow the file\u201d finds it for you.\n\n(${failed})`,
+    type: "info",
+    message: "Add Scram Desktop to the Claude app",
+    detail: [
+      "You do this once:",
+      "",
+      "1. Open the Claude desktop app.",
+      `2. Drag the file \u201c${basename(copy)}\u201d onto the Claude window. (It's in your Downloads folder: \u201cShow the file\u201d finds it.)`,
+      "    Or, in Claude: Settings \u2192 Extensions \u2192 Advanced settings \u2192 Install Extension\u2026, and choose that file.",
+      "3. Click Install.",
+      "",
+      "Then start a new chat in Claude and ask it to do something in Scram. Keep this window open while Claude works in Scram.",
+    ].join("\n"),
     buttons: ["Show the file", "Get the Claude app", "Close"],
     defaultId: 0,
     cancelId: 2,
   });
-  if (response === 0) shell.showItemInFolder(file);
+  if (response === 0) shell.showItemInFolder(copy);
   if (response === 1) shell.openExternal(CLAUDE_APP_DOWNLOAD);
+}
+
+// Runs a command; true if it worked (exit code 0).
+function runQuietly(command, args) {
+  return new Promise((resolve) => execFile(command, args, { timeout: 15000 }, (err) => resolve(!err)));
 }
 
 // First run: which Claude (or other assistant) do you use?

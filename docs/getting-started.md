@@ -78,13 +78,13 @@ The Scram Desktop window shows Scram as you know it. **Log in as usual.** Scram 
 
    ![Screenshot 7: the Scram Desktop menu with "Connect the Claude desktop app" highlighted](images/07-connect-menu.png)
 
-3. The Claude app opens and shows **Scram Desktop** with an **Install** button. Click **Install**.
+3. Add it to Claude:
+   - **On a Mac:** the Claude app opens and shows **Scram Desktop** with an **Install** button. Click **Install**.
+   - **On Windows:** Scram Desktop puts a file called **Scram Desktop for Claude.mcpb** in your **Downloads** folder and shows you where it is. **Drag that file onto the Claude window**, then click **Install**. Or, in Claude, go to **Settings → Extensions → Advanced settings → Install Extension…** and choose the file.
 
    ![Screenshot 8: the Claude app's "Install Scram Desktop" window](images/08-claude-install.png)
 
 That's it. You don't need to copy or paste anything.
-
-> If the Claude app doesn't open, Scram Desktop offers **Show the file**: drag the file it shows (`scram-desktop.mcpb`) onto the Claude app window.
 
 ### If you use Claude Code (Terminal or PowerShell)
 

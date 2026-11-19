@@ -4,7 +4,9 @@ This folder builds **`scram-desktop.mcpb`**, an extension for the **Claude deskt
 
 ## How people get it
 
-In Scram Desktop: **Scram Desktop → Connect the Claude desktop app**. Scram Desktop opens the extension file, the Claude app shows **Install**, and they click it. That's all.
+In Scram Desktop: **Scram Desktop → Connect the Claude desktop app**.
+- **On a Mac,** it opens the file with the Claude app (`open -a Claude`), which shows **Install**.
+- **On Windows,** the Claude app doesn't always register itself for `.mcpb` files (Windows then asks which program to use). So Scram Desktop copies the file to **Downloads** as *Scram Desktop for Claude.mcpb*, shows where it is, and explains how to drag it onto the Claude window (or use Settings → Extensions → Advanced settings → Install Extension…).
 
 The file also ships inside Scram Desktop and on each GitHub release. Someone can double-click it, or drag it onto the Claude app, to install it by hand.
 
