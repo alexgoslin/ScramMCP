@@ -22,6 +22,8 @@ The agent doesn't get special access to Scram. It works the way a person does: i
 
 **The easy way:** download the installer for Windows (`.exe`) or Mac (`.dmg`) from the [Releases page](https://github.com/alexgoslin/ScramMCP/releases), install it, open **Scram Desktop**, log in to Scram, and click **Scram Desktop → Connect Claude Code**. See [`installer/README.md`](installer/README.md) for how the installers are built.
 
+**Guides:** [`docs/getting-started.md`](docs/getting-started.md) is the step-by-step guide for non-technical users (for the Community post). [`docs/launch-plan.md`](docs/launch-plan.md) covers what's needed before a public launch: code signing, the Claude desktop app, and other assistants.
+
 ## Running it from source
 
 You need [Node.js](https://nodejs.org/) 22 or newer.
