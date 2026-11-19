@@ -33,7 +33,7 @@ jobs:
         include:
           - os: windows-latest
             script: dist:win
-            files: installer/dist/*.exe extension/dist/*.mcpb # the Claude extension, once
+            files: installer/dist/*.exe
           - os: macos-latest
             script: dist:mac
             files: installer/dist/*.dmg

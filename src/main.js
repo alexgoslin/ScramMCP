@@ -2,11 +2,11 @@
 // this computer (Claude Code, Cursor…) work in it through Scram's own AI chat.
 
 import { app, BrowserWindow, Menu, clipboard, dialog, powerSaveBlocker, shell, session } from "electron";
-import { execFile } from "node:child_process";
-import { appendFileSync, copyFileSync, cpSync, existsSync } from "node:fs";
-import { basename, join } from "node:path";
+import { appendFileSync, cpSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import { loadConfig, connectInfo, newToken } from "./config.js";
 import { connectClaudeCode } from "./connect-claude.js";
+import { addToClaudeConfig, claudeAppFound, claudeConfigFiles, claudeRunning, connectorEntry, restartClaude } from "./connect-claude-app.js";
 import { ScramDriver } from "./scram/driver.js";
 import { electronPage } from "./scram/electron-page.js";
 import { scramUrls } from "./scram/urls.js";
@@ -138,71 +138,77 @@ function copy(text, what) {
 const CLAUDE_CODE_SETUP = "https://code.claude.com/docs/en/setup";
 const CLAUDE_APP_DOWNLOAD = "https://claude.ai/download";
 
-// The Claude desktop app extension (built by extension/build.mjs): in the installed app's
-// resources, or in extension/dist when running from source.
-function claudeExtensionFile() {
-  return app.isPackaged ? join(process.resourcesPath, "scram-desktop.mcpb") : join(app.getAppPath(), "extension", "dist", "scram-desktop.mcpb");
+// The connector Claude runs (claude-connector/): in the installed app's resources, or in
+// claude-connector/dist when running from source.
+function connectorFile() {
+  return app.isPackaged ? join(process.resourcesPath, "claude-connector", "index.mjs") : join(app.getAppPath(), "claude-connector", "dist", "index.mjs");
 }
 
-// Connect the Claude desktop app with the extension (it finds this app's address and token by
-// itself, from this app's settings file, so nobody sees or pastes the token).
-//   Mac: open the file with the Claude app ("open -a Claude"), which shows its Install button.
-//   Windows: the Claude app doesn't always tell Windows it opens .mcpb files (then Windows asks
-//   which program to use), so put the file in Downloads and show how to add it in Claude:
-//   drag it onto Claude, or Settings → Extensions → Install Extension.
+// Connect the Claude desktop app in one click: add Scram Desktop to the Claude app's settings
+// file (no token in it: the connector finds it), then restart Claude so it loads it.
 async function connectClaudeApp() {
-  const file = claudeExtensionFile();
-  if (!existsSync(file)) {
-    dialog.showErrorBox("The Claude extension is missing", app.isPackaged ? "Reinstall Scram Desktop." : "Build it first: npm run build:extension");
+  if (!claudeAppFound()) {
+    const { response } = await dialog.showMessageBox(win, {
+      type: "info",
+      message: "The Claude desktop app isn't on this computer",
+      detail: "Install the Claude desktop app, open it once and log in, then click Connect the Claude desktop app again.",
+      buttons: ["Get the Claude app", "Close"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response === 0) shell.openExternal(CLAUDE_APP_DOWNLOAD);
     return;
   }
-  if (process.platform === "darwin" && (await runQuietly("open", ["-a", "Claude", file]))) {
-    log("Opened the Claude extension in the Claude app.");
-    await dialog.showMessageBox(win, {
-      type: "info",
-      message: "Now click Install in the Claude app",
-      detail:
-        "The Claude app should now show \u201cScram Desktop\u201d with an Install button. Click Install.\n\nThen start a new chat in Claude and ask it to do something in Scram, for example \u201cUse Scram to add a contact page to my project\u201d. Keep this window open while Claude works in Scram.",
+  if (process.platform === "darwin" && process.execPath.startsWith("/Volumes/")) {
+    dialog.showMessageBox(win, {
+      type: "warning",
+      message: "Move Scram Desktop to Applications first",
+      detail: "Scram Desktop is running from its download (the disk image). Drag it into the Applications folder, open it from there, then click Connect the Claude desktop app again.",
     });
     return;
   }
-  await addInClaudeYourself(file);
-}
-
-// The file goes in Downloads, where it's easy to find, and the steps to add it in Claude.
-async function addInClaudeYourself(file) {
-  let copy = file;
-  try {
-    copy = join(app.getPath("downloads"), "Scram Desktop for Claude.mcpb");
-    copyFileSync(file, copy);
-  } catch {
-    copy = file;
+  const connector = connectorFile();
+  if (!existsSync(connector)) {
+    dialog.showErrorBox("Part of Scram Desktop is missing", app.isPackaged ? "Reinstall Scram Desktop." : "Build it first: npm run build:connector");
+    return;
   }
-  log(`Showing how to add the Claude extension by hand (${copy}).`);
+  const result = addToClaudeConfig(claudeConfigFiles(), connectorEntry({ execPath: process.execPath, connectorPath: connector, installed: app.isPackaged }));
+  log(`Connect the Claude desktop app: changed ${result.changed.length}, unchanged ${result.unchanged.length}, failed ${result.failed.length}.`);
+  if (!result.changed.length && !result.unchanged.length) {
+    dialog.showErrorBox("Couldn't connect the Claude desktop app", result.failed.map((f) => `${f.reason}.\n(${f.file})`).join("\n\n"));
+    return;
+  }
+  const done = "Start a new chat in Claude and ask it to do something in Scram, for example \u201cUse Scram to add a contact page to my project\u201d. Keep this window open while Claude works in Scram.";
+  if (!(await claudeRunning())) {
+    await dialog.showMessageBox(win, { type: "info", message: "The Claude desktop app is connected", detail: `Open the Claude app. ${done}` });
+    return;
+  }
   const { response } = await dialog.showMessageBox(win, {
-    type: "info",
-    message: "Add Scram Desktop to the Claude app",
-    detail: [
-      "You do this once:",
-      "",
-      "1. Open the Claude desktop app.",
-      `2. Drag the file \u201c${basename(copy)}\u201d onto the Claude window. (It's in your Downloads folder: \u201cShow the file\u201d finds it.)`,
-      "    Or, in Claude: Settings \u2192 Extensions \u2192 Advanced settings \u2192 Install Extension\u2026, and choose that file.",
-      "3. Click Install.",
-      "",
-      "Then start a new chat in Claude and ask it to do something in Scram. Keep this window open while Claude works in Scram.",
-    ].join("\n"),
-    buttons: ["Show the file", "Get the Claude app", "Close"],
+    type: "question",
+    message: "Restart the Claude app to finish",
+    detail: "Claude only picks up Scram Desktop when it starts. Restart it now? It closes and opens again (anything you're typing in Claude is lost).",
+    buttons: ["Restart Claude", "Later"],
     defaultId: 0,
-    cancelId: 2,
+    cancelId: 1,
   });
-  if (response === 0) shell.showItemInFolder(copy);
-  if (response === 1) shell.openExternal(CLAUDE_APP_DOWNLOAD);
-}
-
-// Runs a command; true if it worked (exit code 0).
-function runQuietly(command, args) {
-  return new Promise((resolve) => execFile(command, args, { timeout: 15000 }, (err) => resolve(!err)));
+  if (response !== 0) {
+    await dialog.showMessageBox(win, {
+      type: "info",
+      message: "Restart Claude when you're ready",
+      detail: `Quit the Claude app completely (${process.platform === "darwin" ? "Claude menu \u2192 Quit Claude" : "right-click its icon by the clock \u2192 Quit"}), then open it again. ${done}`,
+    });
+    return;
+  }
+  if (await restartClaude()) {
+    log("Restarted the Claude app.");
+    await dialog.showMessageBox(win, { type: "info", message: "The Claude desktop app is connected", detail: done });
+  } else {
+    await dialog.showMessageBox(win, {
+      type: "warning",
+      message: "Couldn't restart Claude by itself",
+      detail: `Scram Desktop is connected, but Claude needs a restart: quit it completely (${process.platform === "darwin" ? "Claude menu \u2192 Quit Claude" : "right-click its icon by the clock \u2192 Quit"}) and open it again. ${done}`,
+    });
+  }
 }
 
 // First run: which Claude (or other assistant) do you use?
@@ -265,7 +271,7 @@ function showConnectionDetails() {
     message: "Connect an AI agent to Scram",
     detail: [
       "1. Log in to Scram in this window.",
-      "2. Connect your agent. For the Claude desktop app, use Connect the Claude desktop app instead (no token needed). For Claude Code, click Connect Claude Code, or run this once in a terminal:",
+      "2. Connect your agent. For the Claude desktop app, use Connect the Claude desktop app instead (one click, no token needed). For Claude Code, click Connect Claude Code, or run this once in a terminal:",
       "",
       claudeCode,
       "",

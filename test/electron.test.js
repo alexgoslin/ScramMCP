@@ -9,11 +9,12 @@ import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { startFakeScram } from "./fake-scram/server.js";
+import { connectorEntry } from "../src/connect-claude-app.js";
 
 const packaged = process.env.SCRAM_MCP_TEST_BINARY;
 const electronBin = packaged || execFileSync(process.execPath, ["-e", "process.stdout.write(require('electron'))"], { cwd: new URL("..", import.meta.url) }).toString();
@@ -88,7 +89,13 @@ after(async () => {
     await Promise.race([exited, sleep(10000)]); // let Electron finish writing its files first
   }
   await site?.close();
-  if (userData) rmSync(userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+  if (userData) {
+    try {
+      rmSync(userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+    } catch {
+      /* a leftover temp folder is harmless */
+    }
+  }
 }, { timeout: 60000 });
 
 const call = async (name, args = {}) => {
@@ -218,10 +225,17 @@ test("brings over Scram MCP's settings (token, login) on its first run as Scram 
   }
 });
 
-test("the Claude desktop app extension reaches the running app, using the app's own settings file", { skip, timeout: 120000 }, async () => {
-  const bridge = fileURLToPath(new URL("../extension/stage/server/index.mjs", import.meta.url));
-  if (!existsSync(bridge)) execFileSync(process.execPath, [fileURLToPath(new URL("../extension/build.mjs", import.meta.url))], { stdio: "inherit" });
-  const data = mkdtempSync(join(tmpdir(), "scram-desktop-ext-"));
+test("Connect the Claude desktop app: Claude's entry reaches the running app, with no token in it", { skip, timeout: 120000 }, async () => {
+  // The connector inside the app (installed), or the one built in the project (from source).
+  const connector = packaged
+    ? process.platform === "darwin"
+      ? join(dirname(electronBin), "..", "Resources", "claude-connector", "index.mjs")
+      : join(dirname(electronBin), "resources", "claude-connector", "index.mjs")
+    : fileURLToPath(new URL("../claude-connector/dist/index.mjs", import.meta.url));
+  if (!existsSync(connector)) execFileSync(process.execPath, [fileURLToPath(new URL("../claude-connector/build.mjs", import.meta.url))], { stdio: "inherit" });
+  // Exactly what the button writes into Claude's settings file.
+  const entry = connectorEntry({ execPath: electronBin, connectorPath: connector, installed: !!packaged });
+  const data = mkdtempSync(join(tmpdir(), "scram-desktop-conn-"));
   const appPort = await freePort();
   writeFileSync(join(data, "config.json"), JSON.stringify({ port: appPort, token: "token-only-the-app-knows", welcomed: true }));
   const args = [...(packaged ? [] : ["."]), ...(process.getuid?.() === 0 ? ["--no-sandbox"] : [])];
@@ -237,10 +251,15 @@ test("the Claude desktop app extension reaches the running app, using the app's 
       if (!up) await sleep(500);
     }
     assert.ok(up, "Scram Desktop didn't start");
-    // The pretend Claude app runs the extension; nobody gives it the token.
+    // The pretend Claude app runs Claude's entry; nobody gives it the token.
+    assert.doesNotMatch(JSON.stringify(entry), /token-only-the-app-knows/);
     const c = new Client({ name: "pretend-claude-app", version: "1.0.0" });
     await c.connect(
-      new StdioClientTransport({ command: process.execPath, args: [bridge], env: { ...process.env, SCRAM_DESKTOP_CONFIG: join(data, "config.json"), SCRAM_DESKTOP_NO_LAUNCH: "1" } })
+      new StdioClientTransport({
+        command: entry.command,
+        args: entry.args,
+        env: { ...process.env, ...entry.env, SCRAM_DESKTOP_CONFIG: join(data, "config.json"), SCRAM_DESKTOP_NO_LAUNCH: "1" },
+      })
     );
     let status;
     for (let i = 0; i < 40; i++) {

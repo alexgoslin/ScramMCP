@@ -6,7 +6,7 @@ Research from November 2026, in reply to George's notes. Items marked **(check)*
 |---|---|---|---|---|
 | 1 | Mac: no "Open Anyway" step (Apple notarization) | Scram (Apple enrolment), then me (build settings) | US$99/yr | 1–3 weeks, mostly Apple paperwork |
 | 2 | Windows: no warning, and no Smart App Control block (code signing) | Scram (Azure account), then me | ~US$10/month | 1–4 weeks, mostly Microsoft's checks |
-| 3 | Claude desktop app: connect with one click, with no token in a chat | Me | none | **Built** (v0.3.0); needs a try in the real Claude app |
+| 3 | Claude desktop app: connect with one click, with no token in a chat | Me | none | **Built** (v0.3.2: one click + Claude restart); needs a try in the real Claude app |
 | 4 | Other assistants (OpenAI Codex, Cursor, VS Code Copilot, Gemini…) | Me | none | a few days |
 
 Items 1 and 2 are the only ones that need Scram to sign up for something, so they're the ones to start first.
@@ -77,7 +77,7 @@ Unsigned installers get the "Windows protected your PC" warning, and on PCs with
 - Scram Desktop gets a menu item, **Connect the Claude desktop app**, that opens the extension so Claude shows its Install button.
 - The extension is built and published with each release, next to the installers.
 
-**Status: built.** It's in `extension/`, checked with Anthropic's own `mcpb` tool, and tested with the official MCP clients standing in for the Claude app (old and new protocol versions), including against the real running Scram Desktop. Still to do: one try with the real Claude desktop app on a Mac and a PC. Organisations can switch extensions off for their users.
+**Update (v0.3.2): the extension route was dropped.** On a Windows PC, the Claude app hadn't registered itself for `.mcpb` files, so opening the extension made Windows ask which program to use. Instead, **Connect the Claude desktop app** now adds Scram Desktop straight to the Claude app's settings file (`claude_desktop_config.json`, the documented place for local tools, including the Store/MSIX install's copy on Windows), then offers to restart Claude. The entry runs Scram Desktop's own program as Node.js with the connector in `claude-connector/`, which reads the token from Scram Desktop's settings, so the token isn't in Claude's settings either. Tested with MCP clients standing in for Claude, including the exact entry against the real running app. Still to do: one try with the real Claude app on a Mac and a PC.
 
 **For people who use Claude Code** (the terminal, or the Code tab in the Claude desktop app), the Connect Claude Code button stays. I'd make the guide recommend the extension for Claude desktop app users and the button for Claude Code users.
 

@@ -1,7 +1,7 @@
 {
   "name": "scram-desktop",
   "productName": "Scram Desktop",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Scram Desktop: Scram in a desktop window, plus a local MCP server so AI agents on your computer (Claude, Codex, Cursor…) can build in Scram through its AI chat.",
   "author": "Scram Software Limited",
   "homepage": "https://github.com/alexgoslin/ScramMCP",
@@ -15,10 +15,10 @@
     "start": "electron .",
     "test": "node --test test/*.test.js",
     "fake-scram": "node test/fake-scram/server.js",
-    "dist:win": "npm run build:extension && electron-builder --config installer/electron-builder.yml --win --publish never",
-    "dist:mac": "npm run build:extension && electron-builder --config installer/electron-builder.yml --mac --publish never",
-    "dist:linux": "npm run build:extension && electron-builder --config installer/electron-builder.yml --linux --publish never",
-    "build:extension": "node extension/build.mjs"
+    "dist:win": "npm run build:connector && electron-builder --config installer/electron-builder.yml --win --publish never",
+    "dist:mac": "npm run build:connector && electron-builder --config installer/electron-builder.yml --mac --publish never",
+    "dist:linux": "npm run build:connector && electron-builder --config installer/electron-builder.yml --linux --publish never",
+    "build:connector": "node claude-connector/build.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/fastify": "2.0.1",
@@ -28,7 +28,6 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@anthropic-ai/mcpb": "2.1.2",
     "@modelcontextprotocol/client": "2.4.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "electron": "45.3.1",

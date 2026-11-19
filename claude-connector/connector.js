@@ -1,18 +1,20 @@
-// Scram Desktop for Claude: the Claude desktop app extension.
+// The Claude desktop app connector.
 //
-// The Claude desktop app runs this small program (with its own built-in Node.js) and talks to it
-// over stdio. It passes everything on to Scram Desktop's MCP server on this computer
-// (http://127.0.0.1:<port>/mcp). It reads Scram Desktop's port and secret token from Scram
+// "Connect the Claude desktop app" adds this to the Claude app's settings file
+// (claude_desktop_config.json) as a local MCP server: Claude runs it with Scram Desktop's own
+// program acting as Node.js (ELECTRON_RUN_AS_NODE=1), and talks to it over stdio. It passes
+// everything on to Scram Desktop's MCP server on this computer (http://127.0.0.1:<port>/mcp).
+// It reads Scram Desktop's port and secret token from Scram
 // Desktop's own settings file each time, so the token never appears in Claude's settings or in a
 // chat, and a new token (Scram Desktop → Make a new token…) is picked up by itself.
 //
-// - The list of tools is built in (tools.json, made when the extension is built), so Claude
-//   shows Scram's tools even while Scram Desktop is closed.
+// - The list of tools is built in (tools.json, made at build time), so Claude shows Scram's
+//   tools even while Scram Desktop is closed.
 // - When Claude uses a tool and Scram Desktop is closed, it opens Scram Desktop and waits for it.
 // - Claude's app gives up on a tool call after about a minute, so calls that wait for Scram's
 //   bot wait at most 50 seconds here; Claude then calls scram_wait_for_reply to keep waiting.
 //
-// Built into server/index.mjs (with tools.json next to it) by extension/build.mjs.
+// Built into dist/index.mjs (with tools.json next to it) by claude-connector/build.mjs.
 
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -24,7 +26,7 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { INSTRUCTIONS } from "../src/mcp/instructions.js";
 
-const VERSION = process.env.SCRAM_BRIDGE_VERSION || "dev"; // set at build time
+const VERSION = process.env.SCRAM_CONNECTOR_VERSION || "dev"; // set at build time
 const WAIT_TOOLS = new Set(["scram_send_message", "scram_wait_for_reply", "scram_choose", "scram_approve_plan", "scram_answer_question"]);
 const DEFAULT_WAIT = 40; // seconds
 const MAX_WAIT = 50;
@@ -77,6 +79,15 @@ async function serverUp(port) {
 function launchScramDesktop() {
   if (process.env.SCRAM_DESKTOP_NO_LAUNCH) return false;
   try {
+    // Usually this connector is run by Scram Desktop's own program (as Node.js): start that same
+    // program normally, wherever it's installed.
+    if (process.env.ELECTRON_RUN_AS_NODE && process.env.SCRAM_DESKTOP_APP_RUNS_CONNECTOR) {
+      const env = { ...process.env };
+      delete env.ELECTRON_RUN_AS_NODE;
+      delete env.SCRAM_DESKTOP_APP_RUNS_CONNECTOR;
+      spawn(process.execPath, [], { detached: true, stdio: "ignore", env }).unref();
+      return true;
+    }
     if (process.platform === "darwin") {
       spawn("open", ["-a", "Scram Desktop"], { detached: true, stdio: "ignore" }).unref();
       return true;
@@ -125,7 +136,7 @@ async function scramDesktop({ launch }) {
   const key = `${settings.port}:${settings.token}`;
   if (client && clientKey === key) return client;
   await dropClient();
-  const c = new Client({ name: "scram-desktop-for-claude", version: VERSION });
+  const c = new Client({ name: "scram-desktop-claude-connector", version: VERSION });
   await c.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${settings.port}/mcp`), {
       requestInit: { headers: { Authorization: `Bearer ${settings.token}` } },
