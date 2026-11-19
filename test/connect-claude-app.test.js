@@ -7,7 +7,8 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addToClaudeConfig, claudeAppFound, claudeConfigFiles, connectorEntry, SERVER_NAME } from "../src/connect-claude-app.js";
+import { execFileSync } from "node:child_process";
+import { addToClaudeConfig, claudeAppFound, claudeConfigFiles, connectorEntry, SERVER_NAME, windowsStartClaudeScript } from "../src/connect-claude-app.js";
 
 const fresh = () => mkdtempSync(join(tmpdir(), "claude-config-test-"));
 const entry = connectorEntry({ execPath: "C:\\Program Files\\Scram Desktop\\Scram Desktop.exe", connectorPath: "C:\\x\\index.mjs", installed: true });
@@ -70,4 +71,10 @@ test("never touches a settings file it can't read", () => {
   assert.equal(r.changed.length, 0);
   assert.match(r.failed[0].reason, /isn't valid JSON/);
   assert.equal(readFileSync(file, "utf8"), "{ this isn't json");
+});
+
+test("the PowerShell that reopens Claude on Windows is valid", { skip: process.platform !== "win32" && "Windows only" }, () => {
+  // Parses it without running it (a syntax error used to stop Claude being reopened).
+  const check = "$e = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($env:SCRIPT, [ref]$null, [ref]$e); if ($e.Count) { $e | ForEach-Object { $_.Message }; exit 1 }";
+  execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", check], { env: { ...process.env, SCRIPT: windowsStartClaudeScript() }, stdio: "pipe" });
 });

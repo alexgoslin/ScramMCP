@@ -45,6 +45,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Quick tests (on this system)
+        shell: bash
+        run: node --test test/connect-claude-app.test.js test/mcp.test.js
       - run: npm run ${{ matrix.script }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false" # no signing certificate yet

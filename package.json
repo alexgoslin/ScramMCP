@@ -1,7 +1,7 @@
 {
   "name": "scram-desktop",
   "productName": "Scram Desktop",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Scram Desktop: Scram in a desktop window, plus a local MCP server so AI agents on your computer (Claude, Codex, Cursor…) can build in Scram through its AI chat.",
   "author": "Scram Software Limited",
   "homepage": "https://github.com/alexgoslin/ScramMCP",

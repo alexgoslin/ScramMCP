@@ -110,26 +110,35 @@ export async function claudeRunning(platform = process.platform) {
   return false;
 }
 
-// Quits the Claude app and opens it again, so it loads its settings file. True if it's open again.
+// Quits the Claude app and opens it again, so it loads its settings file. True only if Claude
+// really quit and is open again; false means the person should restart it themselves.
 export async function restartClaude(platform = process.platform) {
   if (platform === "darwin") {
-    await run("osascript", ["-e", 'quit app "Claude"']);
-    await waitUntil(async () => !(await claudeRunning(platform)), 20000);
-    return (await run("open", ["-a", "Claude"])).ok;
+    // A normal quit signal: no "control another app" permission needed (asking Claude to quit
+    // through AppleScript would need one, and can fail silently without it).
+    await run("pkill", ["-TERM", "-x", "Claude"]);
+    if (!(await waitUntil(async () => !(await claudeRunning(platform)), 20000))) return false;
+    if (!(await run("open", ["-a", "Claude"])).ok) return false;
+    return waitUntil(() => claudeRunning(platform), 20000);
   }
   if (platform === "win32") {
     // Closing Claude's window only hides it in the system tray, so it's ended properly.
     await run("taskkill", ["/IM", "claude.exe", "/T", "/F"]);
-    await waitUntil(async () => !(await claudeRunning(platform)), 20000);
-    // Start it the way the Start menu does (works for the normal and the Store/MSIX install).
-    const ps =
-      "$a = Get-StartApps | Where-Object { $_.Name -eq 'Claude' } | Select-Object -First 1; " +
-      "if ($a) { Start-Process explorer.exe -ArgumentList ('shell:AppsFolder\\' + $a.AppID); exit 0 } " +
-      "$exe = Join-Path $env:LOCALAPPDATA 'AnthropicClaude\\claude.exe'; if (Test-Path $exe) { Start-Process $exe; exit 0 }; exit 1";
-    if (!(await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ps], { timeout: 30000 })).ok) return false;
+    if (!(await waitUntil(async () => !(await claudeRunning(platform)), 20000))) return false;
+    if (!(await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", windowsStartClaudeScript()], { timeout: 30000 })).ok) return false;
     return waitUntil(() => claudeRunning(platform), 20000);
   }
   return false;
+}
+
+// PowerShell that starts Claude the way the Start menu does (works for the normal and the
+// Store/MSIX install), else from its usual install folder. (Checked on Windows by the tests.)
+export function windowsStartClaudeScript() {
+  return (
+    "$a = Get-StartApps | Where-Object { $_.Name -eq 'Claude' } | Select-Object -First 1; " +
+    "if ($a) { Start-Process explorer.exe -ArgumentList ('shell:AppsFolder\\' + $a.AppID); exit 0 }; " +
+    "$exe = Join-Path $env:LOCALAPPDATA 'AnthropicClaude\\claude.exe'; if (Test-Path $exe) { Start-Process $exe; exit 0 }; exit 1"
+  );
 }
 
 async function waitUntil(check, ms) {
