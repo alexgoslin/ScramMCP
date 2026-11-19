@@ -33,7 +33,7 @@ jobs:
         include:
           - os: windows-latest
             script: dist:win
-            files: installer/dist/*.exe
+            files: installer/dist/*.exe extension/dist/*.mcpb # the Claude extension, once
           - os: macos-latest
             script: dist:mac
             files: installer/dist/*.dmg
@@ -54,10 +54,19 @@ jobs:
         shell: bash
         timeout-minutes: 15 # never hang for long
         run: bash installer/test-packaged.sh
+      - name: List what to upload
+        id: files
+        shell: bash
+        run: |
+          {
+            echo "paths<<EOF"
+            for f in ${{ matrix.files }}; do echo "$f"; done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: installer-${{ matrix.os }}
-          path: ${{ matrix.files }}
+          path: ${{ steps.files.outputs.paths }}
           if-no-files-found: error
       # Each installer goes onto the release as soon as it's built (Mac machines can take a
       # while to free up; the Windows installer shouldn't wait for them).

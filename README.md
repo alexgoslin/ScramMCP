@@ -20,7 +20,9 @@ The agent doesn't get special access to Scram. It works the way a person does: i
 
 ## Installing it
 
-**The easy way:** download the installer for Windows (`.exe`) or Mac (`.dmg`) from the [Releases page](https://github.com/alexgoslin/ScramMCP/releases), install it, open **Scram Desktop**, log in to Scram, and click **Scram Desktop → Connect Claude Code**. See [`installer/README.md`](installer/README.md) for how the installers are built.
+**The easy way:** download the installer for Windows (`.exe`) or Mac (`.dmg`) from the [Releases page](https://github.com/alexgoslin/ScramMCP/releases), install it, open **Scram Desktop**, log in to Scram, and click **Scram Desktop → Connect the Claude desktop app** (or **Connect Claude Code** for Claude in a terminal). See [`installer/README.md`](installer/README.md) for how the installers are built.
+
+**The Claude desktop app** connects through a small extension in [`extension/`](extension/README.md): Scram Desktop's menu opens it in the Claude app, and it finds Scram Desktop's address and token by itself, so nobody pastes a token.
 
 **Guides:** [`docs/getting-started.md`](docs/getting-started.md) is the step-by-step guide for non-technical users (for the Community post). [`docs/launch-plan.md`](docs/launch-plan.md) covers what's needed before a public launch: code signing, the Claude desktop app, and other assistants.
 

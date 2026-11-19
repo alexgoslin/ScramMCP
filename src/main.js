@@ -135,6 +135,62 @@ function copy(text, what) {
 }
 
 const CLAUDE_CODE_SETUP = "https://code.claude.com/docs/en/setup";
+const CLAUDE_APP_DOWNLOAD = "https://claude.ai/download";
+
+// The Claude desktop app extension (built by extension/build.mjs): in the installed app's
+// resources, or in extension/dist when running from source.
+function claudeExtensionFile() {
+  return app.isPackaged ? join(process.resourcesPath, "scram-desktop.mcpb") : join(app.getAppPath(), "extension", "dist", "scram-desktop.mcpb");
+}
+
+// Connect the Claude desktop app: open the extension file, which the Claude app shows with an
+// Install button. The extension finds this app's address and token by itself (from this app's
+// settings file), so nobody sees or pastes the token.
+async function connectClaudeApp() {
+  const file = claudeExtensionFile();
+  if (!existsSync(file)) {
+    dialog.showErrorBox("The Claude extension is missing", app.isPackaged ? "Reinstall Scram Desktop." : "Build it first: npm run build:extension");
+    return;
+  }
+  const failed = await shell.openPath(file);
+  if (!failed) {
+    log("Opened the Claude desktop app extension.");
+    await dialog.showMessageBox(win, {
+      type: "info",
+      message: "Now click Install in the Claude app",
+      detail:
+        "The Claude desktop app should now show \u201cScram Desktop\u201d with an Install button. Click Install.\n\nThen start a new chat in Claude and ask it to do something in Scram, for example \u201cUse Scram to add a contact page to my project\u201d. Keep this window open while Claude works in Scram.\n\nIf the Claude app didn't open, check it's installed and up to date, then try again.",
+    });
+    return;
+  }
+  log(`Couldn't open the Claude extension: ${failed}`);
+  const { response } = await dialog.showMessageBox(win, {
+    type: "warning",
+    message: "Couldn't open the extension in the Claude app",
+    detail: `Is the Claude desktop app installed?\n\nYou can also add it yourself: drag the file \u201cscram-desktop.mcpb\u201d onto the Claude app, or in the Claude app open Settings \u2192 Extensions and install it from there. \u201cShow the file\u201d finds it for you.\n\n(${failed})`,
+    buttons: ["Show the file", "Get the Claude app", "Close"],
+    defaultId: 0,
+    cancelId: 2,
+  });
+  if (response === 0) shell.showItemInFolder(file);
+  if (response === 1) shell.openExternal(CLAUDE_APP_DOWNLOAD);
+}
+
+// First run: which Claude (or other assistant) do you use?
+async function welcome() {
+  const { response } = await dialog.showMessageBox(win, {
+    type: "info",
+    message: "Connect Scram Desktop to Claude",
+    detail:
+      "Log in to Scram in this window, then connect the AI assistant you use. You only do this once.\n\n\u2022 The Claude desktop app: most people.\n\u2022 Claude Code: if you use Claude in Terminal or PowerShell.\n\nYou can do this later from the Scram Desktop menu.",
+    buttons: ["The Claude desktop app", "Claude Code", "Another assistant\u2026", "Later"],
+    defaultId: 0,
+    cancelId: 3,
+  });
+  if (response === 0) connectClaudeApp();
+  if (response === 1) connectClaude();
+  if (response === 2) showConnectionDetails();
+}
 
 // Connect Claude Code with one click: runs `claude mcp add …` (for all folders) with this app's
 // address and token. If Claude Code isn't installed, or the command fails, offers the command to
@@ -180,7 +236,7 @@ function showConnectionDetails() {
     message: "Connect an AI agent to Scram",
     detail: [
       "1. Log in to Scram in this window.",
-      "2. Connect your agent. For Claude Code, click Connect Claude Code (or run this once in a terminal):",
+      "2. Connect your agent. For the Claude desktop app, use Connect the Claude desktop app instead (no token needed). For Claude Code, click Connect Claude Code, or run this once in a terminal:",
       "",
       claudeCode,
       "",
@@ -204,7 +260,7 @@ async function makeNewToken() {
   const { response } = await dialog.showMessageBox(win, {
     type: "warning",
     message: "Make a new token?",
-    detail: "Agents connected with the old token will stop working until you connect them again with the new one.",
+    detail: "The Claude desktop app picks up the new token by itself. Other agents connected with the old token (Claude Code, Cursor…) stop working until you connect them again.",
     buttons: ["Make a new token", "Cancel"],
     defaultId: 1,
     cancelId: 1,
@@ -223,6 +279,7 @@ function buildMenu() {
     {
       label: APP_NAME,
       submenu: [
+        { label: "Connect the Claude desktop app", click: connectClaudeApp },
         { label: "Connect Claude Code", click: connectClaude },
         { label: "Connect another agent…", click: showConnectionDetails },
         { label: "Copy Claude Code command", click: () => mcp && copy(connectInfo(mcp.url, config.token).claudeCode, "Claude Code command") },
@@ -308,7 +365,7 @@ app.whenReady().then(async () => {
   if (!config.welcomed && mcp && !process.env.SCRAM_MCP_NO_WELCOME) {
     config.welcomed = true;
     saveConfig();
-    showConnectionDetails();
+    welcome();
   }
 });
 

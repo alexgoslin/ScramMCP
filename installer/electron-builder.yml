@@ -24,6 +24,11 @@ files:
   - src/**/*
   - package.json
 asar: true
+# The Claude desktop app extension (npm run build:extension makes it; the dist scripts run that
+# first). Scram Desktop's "Connect the Claude desktop app" opens it.
+extraResources:
+  - from: extension/dist/scram-desktop.mcpb
+    to: scram-desktop.mcpb
 
 win:
   target:

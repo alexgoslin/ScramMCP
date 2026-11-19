@@ -51,5 +51,13 @@ case "$(uname -s)" in
 esac
 
 [ -e "$bin" ] || { echo "No built app at $bin: build it first (npm run dist:mac / dist:win / dist:linux)." >&2; exit 1; }
+
+# The Claude desktop app extension must be inside the app ("Connect the Claude desktop app").
+case "$(uname -s)" in
+  Darwin) ext="$app/Contents/Resources/scram-desktop.mcpb" ;;
+  *) ext="$(dirname "$bin")/resources/scram-desktop.mcpb" ;;
+esac
+[ -s "$ext" ] || { echo "The Claude extension is missing from the app: $ext" >&2; exit 1; }
+echo "== Claude extension inside the app: $ext"
 echo "== End-to-end test of the installed app"
 SCRAM_MCP_TEST_BINARY="$bin" node --test test/electron.test.js

@@ -4,3 +4,5 @@ installer/dist/
 out/
 *.log
 .DS_Store
+extension/stage/
+extension/dist/

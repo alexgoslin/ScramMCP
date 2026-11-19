@@ -10,7 +10,9 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { startFakeScram } from "./fake-scram/server.js";
 
 const packaged = process.env.SCRAM_MCP_TEST_BINARY;
@@ -210,6 +212,55 @@ test("brings over Scram MCP's settings (token, login) on its first run as Scram 
     await sleep(1000); // Electron's helper processes can still be writing their files
     try {
       rmSync(appData, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+    } catch {
+      /* a leftover temp folder is harmless */
+    }
+  }
+});
+
+test("the Claude desktop app extension reaches the running app, using the app's own settings file", { skip, timeout: 120000 }, async () => {
+  const bridge = fileURLToPath(new URL("../extension/stage/server/index.mjs", import.meta.url));
+  if (!existsSync(bridge)) execFileSync(process.execPath, [fileURLToPath(new URL("../extension/build.mjs", import.meta.url))], { stdio: "inherit" });
+  const data = mkdtempSync(join(tmpdir(), "scram-desktop-ext-"));
+  const appPort = await freePort();
+  writeFileSync(join(data, "config.json"), JSON.stringify({ port: appPort, token: "token-only-the-app-knows", welcomed: true }));
+  const args = [...(packaged ? [] : ["."]), ...(process.getuid?.() === 0 ? ["--no-sandbox"] : [])];
+  const [cmd, cmdArgs] = hasDisplay ? [electronBin, args] : ["xvfb-run", ["-a", electronBin, ...args]];
+  const env = { ...process.env, SCRAM_MCP_DEV_HOME: site.url, SCRAM_MCP_USER_DATA: data, SCRAM_MCP_NO_WELCOME: "1" };
+  delete env.SCRAM_MCP_PORT;
+  delete env.SCRAM_MCP_TOKEN;
+  const appProc = spawn(cmd, cmdArgs, { cwd: new URL("..", import.meta.url), detached: true, env });
+  try {
+    let up = false;
+    for (let i = 0; i < 120 && !up; i++) {
+      up = await fetch(`http://127.0.0.1:${appPort}/`).then((r) => r.ok).catch(() => false);
+      if (!up) await sleep(500);
+    }
+    assert.ok(up, "Scram Desktop didn't start");
+    // The pretend Claude app runs the extension; nobody gives it the token.
+    const c = new Client({ name: "pretend-claude-app", version: "1.0.0" });
+    await c.connect(
+      new StdioClientTransport({ command: process.execPath, args: [bridge], env: { ...process.env, SCRAM_DESKTOP_CONFIG: join(data, "config.json"), SCRAM_DESKTOP_NO_LAUNCH: "1" } })
+    );
+    let status;
+    for (let i = 0; i < 40; i++) {
+      status = JSON.parse(textOf(await c.callTool({ name: "scram_status", arguments: {} })));
+      if (status.place === "dashboard") break;
+      await sleep(500);
+    }
+    assert.equal(status.place, "dashboard");
+    await c.close();
+  } finally {
+    try {
+      if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(appProc.pid), "/T", "/F"]);
+      else process.kill(-appProc.pid, "SIGTERM");
+    } catch {
+      /* gone */
+    }
+    await Promise.race([new Promise((r) => appProc.once("exit", r)), sleep(10000)]);
+    await sleep(1000);
+    try {
+      rmSync(data, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
     } catch {
       /* a leftover temp folder is harmless */
     }

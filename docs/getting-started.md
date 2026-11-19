@@ -12,9 +12,9 @@ It runs on your own computer, logged in as you. Nothing extra is put on the inte
 
 - A **Windows 10/11 PC** or a **Mac**
 - Your **Scram account**
-- **Claude Code**, Anthropic's AI assistant for building things (Step 3 shows how to get it). It needs a Claude subscription.
+- **Claude**: either the **Claude desktop app** (most people; [download it here](https://claude.ai/download)) or **Claude Code** (if you use Claude in Terminal or PowerShell)
 
-You don't need anything else: no Node.js or other technical tools.
+That's all. You don't need any technical tools. (Claude in a web browser can't use Scram Desktop, because it can't reach programs on your computer. Use the Claude desktop app.)
 
 ---
 
@@ -69,61 +69,51 @@ The Scram Desktop window shows Scram as you know it. **Log in as usual.** Scram 
 
 ---
 
-## Step 3: Install Claude Code (once)
+## Step 3: Connect Claude (once)
 
-Skip this step if you already use Claude Code.
+### If you use the Claude desktop app (most people)
 
-1. Open your computer's command window:
-   - **Windows:** click **Start**, type **PowerShell**, and press Enter.
-   - **Mac:** press **⌘ Space**, type **Terminal**, and press Enter.
-2. Copy the line for your computer, paste it into the window, and press Enter:
-   - **Windows (PowerShell):**
+1. Make sure the **Claude desktop app** is installed. ([Get it here](https://claude.ai/download) if not.)
+2. In Scram Desktop, open the **Scram Desktop** menu and click **Connect the Claude desktop app**. On a Mac, this menu is in the menu bar at the top of the screen. (The first time you open Scram Desktop, it also asks which Claude you use.)
 
-     ```
-     irm https://claude.ai/install.ps1 | iex
-     ```
+   ![Screenshot 7: the Scram Desktop menu with "Connect the Claude desktop app" highlighted](images/07-connect-menu.png)
 
-   - **Mac (Terminal):**
+3. The Claude app opens and shows **Scram Desktop** with an **Install** button. Click **Install**.
 
-     ```
-     curl -fsSL https://claude.ai/install.sh | bash
-     ```
+   ![Screenshot 8: the Claude app's "Install Scram Desktop" window](images/08-claude-install.png)
 
-3. Wait until it says it has finished, then close the window.
+That's it. You don't need to copy or paste anything.
 
-Anthropic's full instructions are at [code.claude.com](https://code.claude.com/docs/en/setup).
+> If the Claude app doesn't open, Scram Desktop offers **Show the file**: drag the file it shows (`scram-desktop.mcpb`) onto the Claude app window.
 
----
+### If you use Claude Code (Terminal or PowerShell)
 
-## Step 4: Connect Claude to Scram Desktop (once)
+1. If you don't have Claude Code yet, install it. Open **PowerShell** (Windows: Start, type *PowerShell*) or **Terminal** (Mac: ⌘ Space, type *Terminal*), paste the line for your computer, and press Enter:
+   - **Windows:** `irm https://claude.ai/install.ps1 | iex`
+   - **Mac:** `curl -fsSL https://claude.ai/install.sh | bash`
+2. In Scram Desktop, open the **Scram Desktop** menu and click **Connect Claude Code**. You should see **"Claude Code is connected to Scram Desktop"**.
 
-1. In Scram Desktop, open the **Scram Desktop** menu and click **Connect Claude Code**. On a Mac, this menu is in the menu bar at the top of the screen.
-
-   ![Screenshot 7: the Scram Desktop menu with "Connect Claude Code" highlighted](images/07-connect-menu.png)
-
-2. You'll see **"Claude Code is connected to Scram Desktop"**. That's it.
-
-   ![Screenshot 8: the "Claude Code is connected" message](images/08-connected.png)
-
-> If it says Claude Code isn't installed, do Step 3 first. If it still says that, click **Copy the command**, paste it into PowerShell or Terminal, and press Enter.
+> If it says Claude Code isn't installed, close and reopen PowerShell/Terminal after installing, and try again. Or click **Copy the command**, paste it into PowerShell or Terminal, and press Enter.
 
 ---
 
-## Step 5: Ask Claude to build something
+## Step 4: Ask Claude to build something
 
-1. Open PowerShell (Windows) or Terminal (Mac), type `claude`, and press Enter. The first time, Claude asks you to log in to your Claude account.
-2. In Scram Desktop, open the project you want Claude to work on, or ask Claude to make a new one.
+1. In Scram Desktop, open the project you want Claude to work on, or ask Claude to make a new one.
+2. Open Claude:
+   - **Claude desktop app:** start a **new chat**.
+   - **Claude Code:** in PowerShell or Terminal, type `claude` and press Enter.
 3. Tell Claude what you want. For example:
 
    > Using Scram, add a contact page to this project with a form for name, email and message. Approve the bot's plan if it looks right, then switch to Run mode and check the form works.
 
    > Using Scram, create a new project called "Bakery Orders" with a page where customers place orders and a page where I see today's orders.
 
-4. The first time Claude uses Scram, it asks for permission. Choose **Yes** (or **Yes, and don't ask again**).
+4. The first time Claude uses Scram, it asks for permission. Choose **Always allow** (or **Allow**).
 
-![Screenshot 9: Claude Code in the command window working in Scram, next to Scram Desktop showing the message in Scram's chat](images/09-claude-working.png)
+![Screenshot 9: the Claude app working in Scram, next to Scram Desktop showing the message in Scram's chat](images/09-claude-working.png)
 
-You'll see Claude's messages appear in Scram's AI chat, Scram's bot reply, and the app being built. While Claude is working, the Scram Desktop window title shows **"● Agent working"**.
+You'll see Claude's messages appear in Scram's AI chat, Scram's bot reply, and the app being built. While Claude is working, the Scram Desktop window title shows **"● Agent working"**. If Scram Desktop is closed when you ask Claude for something, it opens by itself (log in if it asks).
 
 ### What Claude can do in Scram
 
@@ -153,7 +143,8 @@ Claude never **publishes** your app, **deletes** anything, or touches **sharing,
 
 | What you see | What to do |
 |---|---|
-| Claude says it can't reach Scram, or "scram" isn't in its list of tools | Make sure Scram Desktop is open. Then, in Claude Code, type `/mcp` and check **scram** says *connected*. If it doesn't, click **Connect Claude Code** in Scram Desktop again, then restart Claude Code (type `/exit`, then `claude`). |
+| **Claude desktop app:** Claude doesn't seem to know about Scram | In the Claude app, open **Settings → Extensions** and check **Scram Desktop** is there and switched on. If not, click **Connect the Claude desktop app** in Scram Desktop again. Then start a new chat. |
+| **Claude Code:** Claude says it can't reach Scram, or "scram" isn't in its list of tools | Make sure Scram Desktop is open. Then, in Claude Code, type `/mcp` and check **scram** says *connected*. If it doesn't, click **Connect Claude Code** in Scram Desktop again, then restart Claude Code (type `/exit`, then `claude`). |
 | Claude says you need to log in | Log in to Scram in the Scram Desktop window. |
 | Nothing happens when you open Scram Desktop | It may already be running in the background. Restart your computer, or on Windows end **Scram Desktop** in Task Manager, then open it again. |
 | Windows blocks the installer with no "Run anyway" | Your PC has Smart App Control or a work security policy. Let us know in the comments. |
@@ -171,14 +162,13 @@ Screenshots to take, saved with these names:
 04-mac-drag.png          The .dmg window: Scram Desktop icon and the Applications folder (an arrow helps)
 05-mac-open-anyway.png   System Settings → Privacy & Security → "Scram Desktop was blocked…" with Open Anyway
 06-logged-in.png         Scram Desktop window on the Scram dashboard after logging in
-07-connect-menu.png      Scram Desktop menu open, Connect Claude Code highlighted (take on a Mac: menu bar)
-08-connected.png         The "Claude Code is connected to Scram Desktop" message
-09-claude-working.png    Side by side: Claude Code in Terminal sending a request, and Scram Desktop showing it in
+07-connect-menu.png      Scram Desktop menu open, "Connect the Claude desktop app" highlighted (take on a Mac: menu bar)
+08-claude-install.png    The Claude desktop app's install window for the Scram Desktop extension (Install button)
+09-claude-working.png    Side by side: a Claude desktop app chat using Scram, and Scram Desktop showing the message in
                          Scram's chat with the bot replying
 
 Tips: use a test Scram account with no private data; crop to the relevant part; highlight with a red box or arrow;
 don't show the token (it appears in "Connect another agent…" and the copied command).
 
 When code signing is set up, remove the "Windows protected your PC" and Mac "Open Anyway" steps (and screenshots 2 and 5).
-When the one-click Claude desktop app extension is ready, add a "Using the Claude desktop app" section.
 -->
