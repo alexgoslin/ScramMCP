@@ -4,4 +4,4 @@ installer/dist/
 out/
 *.log
 .DS_Store
-claude-connector/dist/
+connector/dist/

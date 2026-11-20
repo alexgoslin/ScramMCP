@@ -1,6 +1,6 @@
 # Build Scram apps by chatting with Claude: Scram Desktop (beta)
 
-**Scram Desktop** lets Claude (or another AI assistant) build in Scram for you. You tell Claude what you want in plain English, and Claude works in Scram the way you would: it types into Scram's AI chat, approves plans, answers the bot's questions and checks the result. You can watch it happen in the Scram Desktop window.
+**Scram Desktop** lets Claude (or ChatGPT, or another AI assistant) build in Scram for you. You tell Claude what you want in plain English, and Claude works in Scram the way you would: it types into Scram's AI chat, approves plans, answers the bot's questions and checks the result. You can watch it happen in the Scram Desktop window.
 
 It runs on your own computer, logged in as you. Nothing extra is put on the internet.
 
@@ -12,9 +12,9 @@ It runs on your own computer, logged in as you. Nothing extra is put on the inte
 
 - A **Windows 10/11 PC** or a **Mac**
 - Your **Scram account**
-- **Claude**: either the **Claude desktop app** (most people; [download it here](https://claude.ai/download)) or **Claude Code** (if you use Claude in Terminal or PowerShell)
+- **Claude**: either the **Claude desktop app** (most people; [download it here](https://claude.ai/download)) or **Claude Code** (if you use Claude in Terminal or PowerShell). Or the **ChatGPT desktop app** ([download it here](https://openai.com/chatgpt/download/)).
 
-That's all. You don't need any technical tools. (Claude in a web browser can't use Scram Desktop, because it can't reach programs on your computer. Use the Claude desktop app.)
+That's all. You don't need any technical tools. (Claude or ChatGPT in a web browser can't use Scram Desktop, because they can't reach programs on your computer. Use the desktop app.)
 
 ---
 
@@ -84,6 +84,15 @@ The Scram Desktop window shows Scram as you know it. **Log in as usual.** Scram 
 
 That's it. You don't need to copy, paste or install anything.
 
+### If you use the ChatGPT desktop app
+
+1. Make sure the **ChatGPT desktop app** is installed, and that you've opened it once and logged in.
+2. In Scram Desktop, open the **Scram Desktop** menu and click **Connect the ChatGPT desktop app**.
+3. Click **Restart ChatGPT and connect** (or **Open ChatGPT and connect** if ChatGPT isn't open). Scram Desktop closes ChatGPT and opens it again, so it picks up the connection.
+4. Start a **new chat** in ChatGPT and ask it to do something in Scram. Scram Desktop says **"Connected"** when ChatGPT starts using it.
+
+> ChatGPT's desktop app sometimes doesn't offer its local tools in a normal chat yet (a known issue on OpenAI's side). If ChatGPT says it can't use Scram, tell us in the comments.
+
 ### If you use Claude Code (Terminal or PowerShell)
 
 1. If you don't have Claude Code yet, install it. Open **PowerShell** (Windows: Start, type *PowerShell*) or **Terminal** (Mac: ⌘ Space, type *Terminal*), paste the line for your computer, and press Enter:
@@ -142,6 +151,7 @@ Claude never **publishes** your app, **deletes** anything, or touches **sharing,
 | What you see | What to do |
 |---|---|
 | **Claude desktop app:** Claude doesn't seem to know about Scram | Start a **new chat** in Claude. If that doesn't help, click **Connect the Claude desktop app** in Scram Desktop again. If it says Claude hasn't started Scram Desktop, click **Copy details** and paste them in the comments (they don't include any passwords or keys). In Claude, **Settings → Desktop app → Extensions → Local MCP servers** should list **scram**. |
+| **ChatGPT desktop app:** ChatGPT doesn't seem to know about Scram | Start a **new chat**. If that doesn't help, click **Connect the ChatGPT desktop app** in Scram Desktop again. Then click **Scram Desktop menu → Copy connection details (for the Scram team)** and paste them in the comments (they don't include any passwords or keys). |
 | **Claude Code:** Claude says it can't reach Scram, or "scram" isn't in its list of tools | Make sure Scram Desktop is open. Then, in Claude Code, type `/mcp` and check **scram** says *connected*. If it doesn't, click **Connect Claude Code** in Scram Desktop again, then restart Claude Code (type `/exit`, then `claude`). |
 | Claude says you need to log in | Log in to Scram in the Scram Desktop window. |
 | Nothing happens when you open Scram Desktop | It may already be running in the background. Restart your computer, or on Windows end **Scram Desktop** in Task Manager, then open it again. |

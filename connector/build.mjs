@@ -1,10 +1,10 @@
-// Builds the Claude desktop app connector: claude-connector/dist/index.mjs (+ tools.json).
+// Builds the connector the Claude and ChatGPT desktop apps run: connector/dist/index.mjs (+ tools.json).
 // Run from the repo root: npm run build:connector (the installer builds run it first, and
-// electron-builder puts the folder in the app's resources as "claude-connector").
+// electron-builder puts the folder in the app's resources as "connector").
 //
 //   1. bundles connector.js and its MCP SDK code into one file (index.mjs), so it needs no
 //      node_modules: Scram Desktop's own program runs it (as Node.js, ELECTRON_RUN_AS_NODE)
-//   2. records Scram Desktop's current list of tools (tools.json), so Claude sees them while
+//   2. records Scram Desktop's current list of tools (tools.json), so the app sees them while
 //      Scram Desktop is closed
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";

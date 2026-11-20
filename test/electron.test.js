@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { startFakeScram } from "./fake-scram/server.js";
-import { connectorEntry, connectorStartedSince, CONNECTOR_NOTE } from "../src/connect-claude-app.js";
+import { connectorEntry, connectorStartedSince, CONNECTOR_NOTE } from "../src/connector-link.js";
 
 const packaged = process.env.SCRAM_MCP_TEST_BINARY;
 const electronBin = packaged || execFileSync(process.execPath, ["-e", "process.stdout.write(require('electron'))"], { cwd: new URL("..", import.meta.url) }).toString();
@@ -229,10 +229,10 @@ test("Connect the Claude desktop app: Claude's entry reaches the running app, wi
   // The connector inside the app (installed), or the one built in the project (from source).
   const connector = packaged
     ? process.platform === "darwin"
-      ? join(dirname(electronBin), "..", "Resources", "claude-connector", "index.mjs")
-      : join(dirname(electronBin), "resources", "claude-connector", "index.mjs")
-    : fileURLToPath(new URL("../claude-connector/dist/index.mjs", import.meta.url));
-  if (!existsSync(connector)) execFileSync(process.execPath, [fileURLToPath(new URL("../claude-connector/build.mjs", import.meta.url))], { stdio: "inherit" });
+      ? join(dirname(electronBin), "..", "Resources", "connector", "index.mjs")
+      : join(dirname(electronBin), "resources", "connector", "index.mjs")
+    : fileURLToPath(new URL("../connector/dist/index.mjs", import.meta.url));
+  if (!existsSync(connector)) execFileSync(process.execPath, [fileURLToPath(new URL("../connector/build.mjs", import.meta.url))], { stdio: "inherit" });
   // Exactly what the button writes into Claude's settings file.
   const entry = connectorEntry({ execPath: electronBin, connectorPath: connector, installed: !!packaged });
   const data = mkdtempSync(join(tmpdir(), "scram-desktop-conn-"));

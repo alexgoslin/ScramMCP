@@ -24,10 +24,13 @@ files:
   - src/**/*
   - package.json
 asar: true
-# The Claude desktop app connector (npm run build:connector makes it; the dist scripts run that
-# first). "Connect the Claude desktop app" points the Claude app at it.
+# The connector the Claude and ChatGPT desktop apps run (npm run build:connector makes it; the
+# dist scripts run that first). "Connect the Claude/ChatGPT desktop app" points the app at it.
+# claude-connector/ only forwards to it, for Claude connections made by Scram Desktop 0.3.x.
 extraResources:
-  - from: claude-connector/dist
+  - from: connector/dist
+    to: connector
+  - from: connector/legacy
     to: claude-connector
 
 win:

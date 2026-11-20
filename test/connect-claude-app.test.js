@@ -15,12 +15,7 @@ import {
   claudeConfigFiles,
   claudeConnectionReport,
   claudeLogsAboutScram,
-  connectorEntry,
-  connectorNotePlaces,
-  connectorStartedSince,
-  CONNECTOR_NOTE,
   hasEntry,
-  SERVER_NAME,
   userDataDirOf,
   claudeDataDirsInUse,
   claudeRunning,
@@ -29,6 +24,7 @@ import {
   windowsClaudeProcessesScript,
   windowsStartClaudeScript,
 } from "../src/connect-claude-app.js";
+import { connectorEntry, connectorNotePlaces, connectorStartedSince, CONNECTOR_NOTE, SERVER_NAME } from "../src/connector-link.js";
 
 const fresh = () => mkdtempSync(join(tmpdir(), "claude-config-test-"));
 const entry = connectorEntry({ execPath: "C:\\Program Files\\Scram Desktop\\Scram Desktop.exe", connectorPath: "C:\\x\\index.mjs", installed: true });
@@ -82,22 +78,25 @@ test("reads the settings folder off Claude's command line", () => {
   assert.equal(userDataDirOf(null), null);
 });
 
-test("knows when Claude has started the connector, wherever its note was written", () => {
+test("knows when the app has started the connector, wherever its note was written", () => {
   const home = fresh();
   const env = { APPDATA: join(home, "Roaming"), LOCALAPPDATA: join(home, "Local") };
   const settings = join(home, "Roaming", "Scram Desktop");
-  mkdirSync(join(home, "Local", "Packages", "Claude_x"), { recursive: true });
-  const places = connectorNotePlaces(settings, { platform: "win32", env, home });
-  assert.deepEqual(places, [join(settings, CONNECTOR_NOTE), join(home, "Local", "Packages", "Claude_x", "LocalCache", "Roaming", "Scram Desktop", CONNECTOR_NOTE)]);
-  assert.deepEqual(connectorNotePlaces(settings, { platform: "darwin", env, home }), [join(settings, CONNECTOR_NOTE)]);
+  const places = () => connectorNotePlaces(settings, { platform: "win32", env, home });
+  assert.deepEqual(places(), [join(settings, CONNECTOR_NOTE)]);
   const since = Date.now();
   assert.equal(connectorStartedSince(places, since), false);
-  // Redirected into the Store Claude's package folder:
-  mkdirSync(dirname(places[1]), { recursive: true });
-  writeFileSync(places[1], JSON.stringify({ started: new Date(since - 60000).toISOString() }));
+  // Redirected into a Store app's package folder (whatever it's called):
+  const redirected = join(home, "Local", "Packages", "Claude_x", "LocalCache", "Roaming", "Scram Desktop", CONNECTOR_NOTE);
+  mkdirSync(dirname(redirected), { recursive: true });
+  assert.deepEqual(places(), [join(settings, CONNECTOR_NOTE), redirected]);
+  assert.deepEqual(connectorNotePlaces(settings, { platform: "darwin", env, home }), [join(settings, CONNECTOR_NOTE)]);
+  writeFileSync(redirected, JSON.stringify({ started: new Date(since - 60000).toISOString() }));
   assert.equal(connectorStartedSince(places, since), false); // an old note doesn't count
-  writeFileSync(places[1], JSON.stringify({ started: new Date(since + 1000).toISOString() }));
+  writeFileSync(redirected, JSON.stringify({ started: new Date(since + 1000).toISOString() }));
   assert.equal(connectorStartedSince(places, since), true);
+  // Each app has its own note: ChatGPT starting it isn't Claude starting it.
+  assert.equal(connectorStartedSince(connectorNotePlaces(settings, { client: "chatgpt", platform: "win32", env, home }), since), false);
 });
 
 test("adds Scram Desktop, keeps everything else, and backs up the old file once", () => {

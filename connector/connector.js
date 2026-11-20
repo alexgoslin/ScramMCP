@@ -1,20 +1,21 @@
-// The Claude desktop app connector.
+// The connector the Claude and ChatGPT desktop apps run.
 //
-// "Connect the Claude desktop app" adds this to the Claude app's settings file
-// (claude_desktop_config.json) as a local MCP server: Claude runs it with Scram Desktop's own
-// program acting as Node.js (ELECTRON_RUN_AS_NODE=1), and talks to it over stdio. It passes
-// everything on to Scram Desktop's MCP server on this computer (http://127.0.0.1:<port>/mcp).
-// It reads Scram Desktop's port and secret token from Scram
-// Desktop's own settings file each time, so the token never appears in Claude's settings or in a
-// chat, and a new token (Scram Desktop → Make a new token…) is picked up by itself.
+// "Connect the Claude desktop app" / "Connect the ChatGPT desktop app" add this to that app's
+// settings file as a local MCP server: the app runs it with Scram Desktop's own program acting as
+// Node.js (ELECTRON_RUN_AS_NODE=1), and talks to it over stdio. It passes everything on to Scram
+// Desktop's MCP server on this computer (http://127.0.0.1:<port>/mcp). It reads Scram Desktop's
+// port and secret token from Scram Desktop's own settings file each time, so the token never
+// appears in the app's settings or in a chat, and a new token (Scram Desktop → Make a new
+// token…) is picked up by itself.
 //
-// - The list of tools is built in (tools.json, made at build time), so Claude shows Scram's
+// - The list of tools is built in (tools.json, made at build time), so the app shows Scram's
 //   tools even while Scram Desktop is closed.
-// - When Claude uses a tool and Scram Desktop is closed, it opens Scram Desktop and waits for it.
-// - Claude's app gives up on a tool call after about a minute, so calls that wait for Scram's
-//   bot wait at most 50 seconds here; Claude then calls scram_wait_for_reply to keep waiting.
+// - When the app uses a tool and Scram Desktop is closed, it opens Scram Desktop and waits for it.
+// - These apps give up on a tool call after about a minute, so calls that wait for Scram's bot
+//   wait at most 50 seconds here; the app then calls scram_wait_for_reply to keep waiting.
+// - SCRAM_CONNECTOR_CLIENT says which app runs it ("claude" if not set), for the note below.
 //
-// Built into dist/index.mjs (with tools.json next to it) by claude-connector/build.mjs.
+// Built into dist/index.mjs (with tools.json next to it) by connector/build.mjs.
 
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -31,6 +32,7 @@ const WAIT_TOOLS = new Set(["scram_send_message", "scram_wait_for_reply", "scram
 const DEFAULT_WAIT = 40; // seconds
 const MAX_WAIT = 50;
 const LAUNCH_WAIT_MS = 45000;
+const CLIENT = (process.env.SCRAM_CONNECTOR_CLIENT || "claude").toLowerCase().replace(/[^a-z0-9-]/g, "") || "claude";
 
 // The tool list from the build, for when Scram Desktop isn't running.
 function bundledTools() {
@@ -139,7 +141,7 @@ async function scramDesktop({ launch }) {
   const key = `${settings.port}:${settings.token}`;
   if (client && clientKey === key) return client;
   await dropClient();
-  const c = new Client({ name: "scram-desktop-claude-connector", version: VERSION });
+  const c = new Client({ name: `scram-desktop-connector-${CLIENT}`, version: VERSION });
   await c.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${settings.port}/mcp`), {
       requestInit: { headers: { Authorization: `Bearer ${settings.token}` } },
@@ -179,7 +181,7 @@ function createBridgeServer() {
     { name: "scram", title: "Scram", version: VERSION },
     {
       capabilities: { tools: {} },
-      instructions: `${INSTRUCTIONS}\n\nIn the Claude desktop app, each wait for Scram's bot lasts at most ${MAX_WAIT} seconds: if a reply says the bot is still working, call scram_wait_for_reply (again) until it has finished. If Scram Desktop is closed, the tools open it.`,
+      instructions: `${INSTRUCTIONS}\n\nHere, each wait for Scram's bot lasts at most ${MAX_WAIT} seconds: if a reply says the bot is still working, call scram_wait_for_reply (again) until it has finished. If Scram Desktop is closed, the tools open it.`,
     }
   );
 
@@ -222,10 +224,11 @@ function createBridgeServer() {
   return server;
 }
 
-// Tell Scram Desktop that Claude has started the connector (its "Connect the Claude desktop app"
-// waits for this note to confirm the connection worked).
+// Tell Scram Desktop that the app has started the connector ("Connect the … desktop app" waits
+// for this note to confirm the connection worked): claude-connector-started.json,
+// chatgpt-connector-started.json…
 try {
-  writeFileSync(join(dirname(configPath()), "claude-connector-started.json"), JSON.stringify({ started: new Date().toISOString(), pid: process.pid, version: VERSION }));
+  writeFileSync(join(dirname(configPath()), `${CLIENT}-connector-started.json`), JSON.stringify({ started: new Date().toISOString(), pid: process.pid, version: VERSION }));
 } catch {
   /* Scram Desktop hasn't run yet: nothing to tell */
 }

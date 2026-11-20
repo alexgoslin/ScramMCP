@@ -1,5 +1,5 @@
-// The Claude desktop app connector (claude-connector/connector.js, as built by build.mjs), run the
-// way the Claude app runs it: an MCP client stands in for the Claude app and starts it over stdio,
+// The connector the Claude and ChatGPT desktop apps run (connector/connector.js, as built by
+// build.mjs), run the way they run it: an MCP client stands in for the app and starts it over stdio,
 // against a stand-in for Scram Desktop's server. It runs from a copy outside the project (so it
 // can't lean on the project's node_modules), both with plain Node.js and the way the installed
 // app is set up: Scram Desktop's own program (Electron) acting as Node.js.
@@ -17,12 +17,15 @@ import { Client as V1Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport as V1StdioTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { startMcpHttp } from "../src/mcp/http.js";
 import { createScramMcpServer } from "../src/mcp/tools.js";
-import { connectorEntry, connectorStartedSince, CONNECTOR_NOTE } from "../src/connect-claude-app.js";
+import { connectorEntry, connectorNote, connectorStartedSince, CONNECTOR_NOTE } from "../src/connector-link.js";
+import { chatgptServer } from "../src/connect-chatgpt-app.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const built = join(root, "claude-connector", "dist");
+const built = join(root, "connector", "dist");
 const dir = mkdtempSync(join(tmpdir(), "scram-connector-test-"));
-const connector = join(dir, "claude-connector", "index.mjs");
+// Laid out as in the installed app's resources: connector/, and claude-connector/ forwarding to it.
+const connector = join(dir, "connector", "index.mjs");
+const legacyConnector = join(dir, "claude-connector", "index.mjs");
 const configFile = join(dir, "config.json");
 const electronBin = execFileSync(process.execPath, ["-e", "process.stdout.write(require('electron'))"], { cwd: root }).toString();
 
@@ -39,9 +42,11 @@ let srv;
 const writeConfig = () => writeFileSync(configFile, JSON.stringify({ port: srv.port, token }));
 
 before(async () => {
-  if (!existsSync(join(built, "index.mjs"))) execFileSync(process.execPath, [join(root, "claude-connector", "build.mjs")], { stdio: "inherit" });
+  if (!existsSync(join(built, "index.mjs"))) execFileSync(process.execPath, [join(root, "connector", "build.mjs")], { stdio: "inherit" });
+  mkdirSync(join(dir, "connector"));
+  for (const f of ["index.mjs", "tools.json"]) copyFileSync(join(built, f), join(dir, "connector", f));
   mkdirSync(join(dir, "claude-connector"));
-  for (const f of ["index.mjs", "tools.json"]) copyFileSync(join(built, f), join(dir, "claude-connector", f));
+  copyFileSync(join(root, "connector", "legacy", "index.mjs"), legacyConnector);
   srv = await startMcpHttp({ port: 0, token: () => token, factory: () => createScramMcpServer(driver) });
   writeConfig();
 });
@@ -92,6 +97,28 @@ test("picks up a new token by itself", async () => {
 test("also runs with plain Node.js, and with an older (2025-protocol) client", async () => {
   const c = new V1Client({ name: "older-claude-app", version: "1.0.0" });
   await c.connect(new V1StdioTransport({ command: process.execPath, args: [connector], env: { ...process.env, ...testEnv } }));
+  assert.equal((await c.listTools()).tools.length, 14);
+  assert.match(text(await c.callTool({ name: "scram_status", arguments: {} })), /editor/);
+  await c.close();
+});
+
+test("run by the ChatGPT app: exactly ChatGPT's entry, which leaves ChatGPT's own note", async () => {
+  // As "Connect the ChatGPT desktop app" writes it (it also says where Scram Desktop's settings are).
+  const server = chatgptServer(connectorEntry({ execPath: electronBin, connectorPath: connector, installed: true, client: "chatgpt", extraEnv: { SCRAM_DESKTOP_CONFIG: configFile } }));
+  assert.equal(server.env.SCRAM_CONNECTOR_CLIENT, "chatgpt");
+  assert.doesNotMatch(JSON.stringify(server), /first-token|second-token|Bearer/);
+  const since = Date.now();
+  const env = { ...process.env, ...server.env, SCRAM_DESKTOP_NO_LAUNCH: "1" };
+  const c = new Client({ name: "pretend-chatgpt-app", version: "1.0.0" });
+  await c.connect(new StdioClientTransport({ command: server.command, args: server.args, env }));
+  assert.ok(connectorStartedSince([join(dir, connectorNote("chatgpt"))], since), "ChatGPT's note");
+  assert.match(text(await c.callTool({ name: "scram_status", arguments: {} })), /editor/);
+  await c.close();
+});
+
+test("the old path (Claude connections made by Scram Desktop 0.3.x) still works", async () => {
+  const entry = connectorEntry({ execPath: electronBin, connectorPath: legacyConnector, installed: true });
+  const c = await connect({ command: entry.command, args: entry.args, env: { ...process.env, ...entry.env, ...testEnv } });
   assert.equal((await c.listTools()).tools.length, 14);
   assert.match(text(await c.callTool({ name: "scram_status", arguments: {} })), /editor/);
   await c.close();

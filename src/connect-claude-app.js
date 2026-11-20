@@ -1,18 +1,16 @@
 // "Connect the Claude desktop app": adds Scram Desktop to the Claude app's own settings file,
 // claude_desktop_config.json (the file Claude's "Edit config" button opens), as a local MCP
-// server. Claude runs it as Scram Desktop's own program acting as Node.js, running the connector
-// (claude-connector/), which finds Scram Desktop's address and token by itself, so the token is
-// never written there. Claude reads the file when it starts, so Claude is quit first (so it can't
-// write its old settings back over the change), and started again afterwards.
+// server (see connector-link.js: no token in it). Claude reads the file when it starts, so Claude
+// is quit first (so it can't write its old settings back over the change), and started again
+// afterwards.
 
-import { execFile } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir, release } from "node:os";
 import { dirname, join } from "node:path";
+import { appRunning, quitApp, startApp, waitUntil, windowsProcesses, windowsProcessesScript, windowsStartScript } from "./apps.js";
+import { connectorNotePlaces, describeNotes, SERVER_NAME } from "./connector-link.js";
 
-export const SERVER_NAME = "scram";
 export const CONFIG_NAME = "claude_desktop_config.json";
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function safeList(dir) {
   try {
@@ -102,15 +100,6 @@ export function claudeAppFound({ platform = process.platform, env = process.env,
   return places.some((p) => existsSync(p));
 }
 
-// The entry: Scram Desktop's program, run as Node.js, running the connector. When it's the
-// installed app (not a development copy), the connector may also start that same program
-// normally if Scram Desktop is closed.
-export function connectorEntry({ execPath, connectorPath, installed }) {
-  const env = { ELECTRON_RUN_AS_NODE: "1" };
-  if (installed) env.SCRAM_DESKTOP_APP_RUNS_CONNECTOR = "1";
-  return { command: execPath, args: [connectorPath], env };
-}
-
 function readConfig(file) {
   const text = readFileSync(file, "utf8").replace(/^﻿/, "");
   return text.trim() ? JSON.parse(text) : {};
@@ -167,43 +156,19 @@ export const wroteSomewhere = (result) => Boolean(result && (result.changed.leng
 
 // ------------------------------------------------------------------ the running Claude app
 
-function run(command, args, { timeout = 20000 } = {}) {
-  return new Promise((resolve) => {
-    execFile(command, args, { timeout, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => resolve({ ok: !err, out: String(stdout || "") }));
-  });
-}
-
-// PowerShell, given as -EncodedCommand so nothing in the script needs quoting for the command line.
-function powershell(script, options) {
-  return run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], options);
-}
-
-// Lists claude.exe processes with their program and command line, as JSON. (Checked on Windows by the tests.)
-export function windowsClaudeProcessesScript() {
-  return (
-    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n" +
-    "$p = @(Get-CimInstance Win32_Process -Filter \"Name='claude.exe'\" | Select-Object ProcessId, ExecutablePath, CommandLine)\n" +
-    "ConvertTo-Json -InputObject $p -Compress -Depth 2\n"
-  );
-}
-
 // Claude Code (the command-line Claude) is also claude.exe on Windows: it's never the desktop app.
 const CLAUDE_CODE_PROGRAM = /[\\/]\.local[\\/](bin|share)[\\/]|claude-?code/i;
 
+export const CLAUDE_APP = { winExe: "claude.exe", winSkip: CLAUDE_CODE_PROGRAM, winStartName: "Claude", winFallback: "AnthropicClaude\\claude.exe", macName: "Claude" };
+
+export const windowsClaudeProcessesScript = () => windowsProcessesScript(CLAUDE_APP);
+export const windowsStartClaudeScript = () => windowsStartScript(CLAUDE_APP);
 // The Claude desktop app's processes on Windows ({ pid, path, commandLine }), or null if they
 // couldn't be listed.
-export async function windowsClaudeProcesses() {
-  const { ok, out } = await powershell(windowsClaudeProcessesScript(), { timeout: 30000 });
-  if (!ok) return null;
-  try {
-    const list = JSON.parse(out.trim() || "[]");
-    return (Array.isArray(list) ? list : [list])
-      .map((p) => ({ pid: p.ProcessId, path: p.ExecutablePath || "", commandLine: p.CommandLine || "" }))
-      .filter((p) => !CLAUDE_CODE_PROGRAM.test(p.path));
-  } catch {
-    return null;
-  }
-}
+export const windowsClaudeProcesses = () => windowsProcesses(CLAUDE_APP);
+export const claudeRunning = (platform = process.platform) => appRunning(CLAUDE_APP, platform);
+export const quitClaude = (platform = process.platform) => quitApp(CLAUDE_APP, platform);
+export const startClaude = (platform = process.platform) => startApp(CLAUDE_APP, platform);
 
 // The settings folder on a Claude process's command line (--user-data-dir=…), if any.
 export function userDataDirOf(commandLine) {
@@ -217,65 +182,6 @@ export async function claudeDataDirsInUse(platform = process.platform) {
   if (platform !== "win32") return [];
   const processes = (await windowsClaudeProcesses()) || [];
   return uniqueDirs(processes.map((p) => userDataDirOf(p.commandLine)).filter(Boolean), platform);
-}
-
-export async function claudeRunning(platform = process.platform) {
-  if (platform === "win32") {
-    const processes = await windowsClaudeProcesses();
-    if (processes) return processes.length > 0;
-    return /claude\.exe/i.test((await run("tasklist", ["/FI", "IMAGENAME eq claude.exe", "/NH"])).out);
-  }
-  if (platform === "darwin") return (await run("pgrep", ["-x", "Claude"])).ok;
-  return false;
-}
-
-// Quits the Claude app. True once it has really quit.
-export async function quitClaude(platform = process.platform) {
-  if (platform === "darwin") {
-    // A normal quit signal: no "control another app" permission needed (asking Claude to quit
-    // through AppleScript would need one, and can fail silently without it).
-    await run("pkill", ["-TERM", "-x", "Claude"]);
-  } else if (platform === "win32") {
-    // Closing Claude's window only hides it in the system tray, so it's ended. Only the desktop
-    // app: never Claude Code sessions, which are also claude.exe.
-    const processes = await windowsClaudeProcesses();
-    if (processes === null) await run("taskkill", ["/IM", "claude.exe", "/T", "/F"]);
-    else if (processes.length) await run("taskkill", [...processes.flatMap((p) => ["/PID", String(p.pid)]), "/T", "/F"]);
-  } else return false;
-  return waitUntil(async () => !(await claudeRunning(platform)), 20000);
-}
-
-// Opens the Claude app. True once it's running.
-export async function startClaude(platform = process.platform) {
-  if (platform === "darwin") {
-    if (!(await run("open", ["-a", "Claude"])).ok) return false;
-  } else if (platform === "win32") {
-    if (!(await powershell(windowsStartClaudeScript(), { timeout: 30000 })).ok) return false;
-  } else return false;
-  return waitUntil(() => claudeRunning(platform), 30000);
-}
-
-export async function restartClaude(platform = process.platform) {
-  return (await quitClaude(platform)) && startClaude(platform);
-}
-
-// PowerShell that starts Claude the way the Start menu does (works for the normal and the
-// Store/MSIX install), else from its usual install folder. (Checked on Windows by the tests.)
-export function windowsStartClaudeScript() {
-  return (
-    "$a = Get-StartApps | Where-Object { $_.Name -eq 'Claude' } | Select-Object -First 1; " +
-    "if ($a) { Start-Process explorer.exe -ArgumentList ('shell:AppsFolder\\' + $a.AppID); exit 0 }; " +
-    "$exe = Join-Path $env:LOCALAPPDATA 'AnthropicClaude\\claude.exe'; if (Test-Path $exe) { Start-Process $exe; exit 0 }; exit 1"
-  );
-}
-
-async function waitUntil(check, ms) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    if (await check()) return true;
-    await sleep(500);
-  }
-  return check();
 }
 
 const mergeResults = (a, b) => ({ changed: [...a.changed, ...b.changed], unchanged: [...a.unchanged, ...b.unchanged], failed: [...a.failed, ...b.failed] });
@@ -303,37 +209,6 @@ export async function connectAndStartClaude(entry, { platform = process.platform
   if (!(await quitClaude(platform))) return { result, started: false };
   result = mergeResults(result, addToClaudeConfig(missing, entry));
   return { result, started: await startClaude(platform) };
-}
-
-// ------------------------------------------------------------------ did Claude pick it up?
-
-// The connector leaves this note in Scram Desktop's settings folder each time Claude starts it,
-// so Scram Desktop can tell for sure that Claude has picked up the connection.
-// (On Windows, when Claude is a Store/MSIX app, files written by programs it starts can be
-// redirected into Claude's package folder, so the note is looked for there too.)
-export const CONNECTOR_NOTE = "claude-connector-started.json";
-
-export function connectorNotePlaces(settingsDir, { platform = process.platform, env = process.env, home = homedir() } = {}) {
-  const dirs = [settingsDir];
-  if (platform === "win32") {
-    const { local } = winFolders(env, home);
-    for (const pkg of claudePackages(local)) dirs.push(join(local, "Packages", pkg, "LocalCache", "Roaming", "Scram Desktop"));
-  }
-  return dirs.map((d) => join(d, CONNECTOR_NOTE));
-}
-
-export function connectorStartedSince(places, since) {
-  return places.some((file) => {
-    try {
-      return Date.parse(JSON.parse(readFileSync(file, "utf8")).started) >= since;
-    } catch {
-      return false;
-    }
-  });
-}
-
-export async function waitForConnector(places, since, ms = 60000) {
-  return waitUntil(async () => connectorStartedSince(places, since), ms);
 }
 
 // ------------------------------------------------------------------ when it doesn't work
@@ -420,16 +295,7 @@ export async function claudeConnectionReport({ platform = process.platform, env 
   } else lines.push(`Claude app running: ${await claudeRunning(platform)}`);
   lines.push("", "Claude settings files:");
   for (const file of claudeConfigFiles({ platform, env, home, inUse })) lines.push(`  ${file}: ${describeConfig(file)}`);
-  lines.push("", "Connector started notes:");
-  for (const file of connectorNotePlaces(settingsDir, { platform, env, home })) {
-    let note = "none";
-    try {
-      note = readFileSync(file, "utf8").trim();
-    } catch {
-      /* none */
-    }
-    lines.push(`  ${file}: ${note}`);
-  }
+  lines.push("", "Connector started notes:", ...describeNotes(connectorNotePlaces(settingsDir, { client: "claude", platform, env, home })));
   const { sawLogs, excerpts } = claudeLogsAboutScram({ platform, env, home, inUse });
   lines.push("", `Claude's logs (looked in ${claudeLogDirs({ platform, env, home, dataDirs: claudeDataDirs({ platform, env, home, inUse }) }).join(", ")}):`);
   if (!sawLogs && !excerpts.length) lines.push("  (no mcp.log found)");

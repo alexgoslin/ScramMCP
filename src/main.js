@@ -15,11 +15,19 @@ import {
   claudeLogsAboutScram,
   claudeRunning,
   connectAndStartClaude,
-  connectorEntry,
-  connectorNotePlaces,
-  waitForConnector,
   wroteSomewhere,
 } from "./connect-claude-app.js";
+import {
+  addToChatGPTConfig,
+  chatgptAppFound,
+  chatgptConfigFile,
+  chatgptConnectionReport,
+  chatgptRunning,
+  chatgptServer,
+  CHATGPT_DOWNLOAD,
+  connectAndStartChatGPT,
+} from "./connect-chatgpt-app.js";
+import { connectorEntry, connectorNotePlaces, waitForConnector } from "./connector-link.js";
 import { ScramDriver } from "./scram/driver.js";
 import { electronPage } from "./scram/electron-page.js";
 import { scramUrls } from "./scram/urls.js";
@@ -151,11 +159,31 @@ function copy(text, what) {
 const CLAUDE_CODE_SETUP = "https://code.claude.com/docs/en/setup";
 const CLAUDE_APP_DOWNLOAD = "https://claude.ai/download";
 
-// The connector Claude runs (claude-connector/): in the installed app's resources, or in
-// claude-connector/dist when running from source.
+// The connector the Claude and ChatGPT desktop apps run (connector/): in the installed app's
+// resources, or in connector/dist when running from source.
 function connectorFile() {
-  return app.isPackaged ? join(process.resourcesPath, "claude-connector", "index.mjs") : join(app.getAppPath(), "claude-connector", "dist", "index.mjs");
+  return app.isPackaged ? join(process.resourcesPath, "connector", "index.mjs") : join(app.getAppPath(), "connector", "dist", "index.mjs");
 }
+
+// Checks before connecting the Claude or ChatGPT desktop app. False if it can't go ahead (and
+// the person has been told why).
+function connectorReady() {
+  if (process.platform === "darwin" && process.execPath.startsWith("/Volumes/")) {
+    dialog.showMessageBox(win, {
+      type: "warning",
+      message: "Move Scram Desktop to Applications first",
+      detail: "Scram Desktop is running from its download (the disk image). Drag it into the Applications folder, open it from there, then try again.",
+    });
+    return false;
+  }
+  if (!existsSync(connectorFile())) {
+    dialog.showErrorBox("Part of Scram Desktop is missing", app.isPackaged ? "Reinstall Scram Desktop." : "Build it first: npm run build:connector");
+    return false;
+  }
+  return true;
+}
+
+const notePlaces = (client) => () => connectorNotePlaces(app.getPath("userData"), { client });
 
 // Connect the Claude desktop app in one click: add Scram Desktop to the Claude app's settings
 // (no token in them: the connector finds it), restarting Claude so it loads them.
@@ -172,21 +200,9 @@ async function connectClaudeApp() {
     if (response === 0) shell.openExternal(CLAUDE_APP_DOWNLOAD);
     return;
   }
-  if (process.platform === "darwin" && process.execPath.startsWith("/Volumes/")) {
-    dialog.showMessageBox(win, {
-      type: "warning",
-      message: "Move Scram Desktop to Applications first",
-      detail: "Scram Desktop is running from its download (the disk image). Drag it into the Applications folder, open it from there, then click Connect the Claude desktop app again.",
-    });
-    return;
-  }
-  const connector = connectorFile();
-  if (!existsSync(connector)) {
-    dialog.showErrorBox("Part of Scram Desktop is missing", app.isPackaged ? "Reinstall Scram Desktop." : "Build it first: npm run build:connector");
-    return;
-  }
-  const entry = connectorEntry({ execPath: process.execPath, connectorPath: connector, installed: app.isPackaged });
-  const notes = connectorNotePlaces(app.getPath("userData"));
+  if (!connectorReady()) return;
+  const entry = connectorEntry({ execPath: process.execPath, connectorPath: connectorFile(), installed: app.isPackaged });
+  const notes = notePlaces("claude");
   const quit = process.platform === "darwin" ? "Claude menu \u2192 Quit Claude" : "right-click its icon by the clock \u2192 Quit";
   const done = "Start a new chat in Claude and ask it to do something in Scram, for example \u201cUse Scram to add a contact page to my project\u201d. Keep this window open while Claude works in Scram.";
 
@@ -207,7 +223,7 @@ async function connectClaudeApp() {
     const result = addToClaudeConfig(claudeConfigFiles({ inUse: await claudeDataDirsInUse() }), entry);
     logConnect(result);
     if (!wroteSomewhere(result)) return couldntWrite(result);
-    watchForConnector(notes, since);
+    watchForConnector(notes, since, "Claude");
     await dialog.showMessageBox(win, {
       type: "info",
       message: running ? "Restart Claude when you're ready" : "Open Claude when you're ready",
@@ -226,7 +242,7 @@ async function connectClaudeApp() {
   logConnect(outcome.result);
   if (!wroteSomewhere(outcome.result)) return couldntWrite(outcome.result);
   if (!outcome.started) {
-    watchForConnector(notes, since);
+    watchForConnector(notes, since, "Claude");
     await dialog.showMessageBox(win, {
       type: "warning",
       message: "Couldn't restart Claude by itself",
@@ -246,35 +262,128 @@ async function connectClaudeApp() {
   }
 }
 
-function logConnect(result) {
+function logConnect(result, appName = "Claude") {
   log(
-    `Connect the Claude desktop app: wrote ${result.changed.join(", ") || "-"}; already there ${result.unchanged.join(", ") || "-"}; failed ${
+    `Connect the ${appName} desktop app: wrote ${result.changed.join(", ") || "-"}; already there ${result.unchanged.join(", ") || "-"}; failed ${
       result.failed.map((f) => `${f.file} (${f.reason})`).join(", ") || "-"
     }.`
   );
 }
 
-function couldntWrite(result) {
-  dialog.showErrorBox("Couldn't connect the Claude desktop app", result.failed.map((f) => `${f.reason}.\n(${f.file})`).join("\n\n") || "Claude's settings file wasn't found.");
+function couldntWrite(result, appName = "Claude") {
+  dialog.showErrorBox(`Couldn't connect the ${appName} desktop app`, result.failed.map((f) => `${f.reason}.\n(${f.file})`).join("\n\n") || `${appName}'s settings file wasn't found.`);
 }
 
-// After the person restarts Claude themselves: say so when Claude has picked Scram Desktop up.
-let watching = false;
-async function watchForConnector(notes, since) {
-  if (watching) return;
-  watching = true;
+// After the person (re)starts the app themselves: say so when it has picked Scram Desktop up.
+const watching = new Set();
+async function watchForConnector(notes, since, appName) {
+  if (watching.has(appName)) return;
+  watching.add(appName);
   try {
     if (await waitForConnector(notes, since, 10 * 60000)) {
-      log("Claude started Scram Desktop's connector.");
+      log(`${appName} started Scram Desktop's connector.`);
       await dialog.showMessageBox(win, {
         type: "info",
-        message: "Connected: Claude is using Scram Desktop",
-        detail: "Start a new chat in Claude and ask it to do something in Scram. Keep this window open while Claude works in Scram.",
+        message: `Connected: ${appName} is using Scram Desktop`,
+        detail: `Start a new chat in ${appName} and ask it to do something in Scram. Keep this window open while ${appName} works in Scram.`,
       });
     }
   } finally {
-    watching = false;
+    watching.delete(appName);
   }
+}
+
+// Connect the ChatGPT desktop app in one click: add Scram Desktop to the settings file ChatGPT
+// reads its local tools from (no token in it: the connector finds it), restarting ChatGPT so it
+// loads it.
+async function connectChatGPTApp() {
+  if (!(await chatgptAppFound())) {
+    const { response } = await dialog.showMessageBox(win, {
+      type: "info",
+      message: "The ChatGPT desktop app isn't on this computer",
+      detail: "Install the ChatGPT desktop app, open it once and log in, then click Connect the ChatGPT desktop app again.",
+      buttons: ["Get the ChatGPT app", "Close"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response === 0) shell.openExternal(CHATGPT_DOWNLOAD);
+    return;
+  }
+  if (!connectorReady()) return;
+  // ChatGPT may start programs with only a few of the usual settings, so the connector is told
+  // where Scram Desktop's settings are (and, on Windows, where Windows is, which networking needs).
+  const extraEnv = { SCRAM_DESKTOP_CONFIG: join(app.getPath("userData"), "config.json") };
+  if (process.platform === "win32" && process.env.SystemRoot) extraEnv.SystemRoot = process.env.SystemRoot;
+  const server = chatgptServer(connectorEntry({ execPath: process.execPath, connectorPath: connectorFile(), installed: app.isPackaged, client: "chatgpt", extraEnv }));
+  const notes = notePlaces("chatgpt");
+  const quit = process.platform === "darwin" ? "ChatGPT menu \u2192 Quit ChatGPT" : "right-click its icon by the clock \u2192 Quit, if it's there";
+  const done = "Start a new chat in ChatGPT and ask it to do something in Scram, for example \u201cUse Scram to add a contact page to my project\u201d. Keep this window open while ChatGPT works in Scram.";
+
+  const running = await chatgptRunning();
+  const { response } = await dialog.showMessageBox(win, {
+    type: "question",
+    message: "Connect the ChatGPT desktop app",
+    detail: running
+      ? "ChatGPT only picks up Scram Desktop when it starts, so Scram Desktop restarts it: ChatGPT closes and opens again (anything you're typing in ChatGPT is lost)."
+      : "Scram Desktop opens the ChatGPT app and connects it.",
+    buttons: [running ? "Restart ChatGPT and connect" : "Open ChatGPT and connect", "Later"],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  const since = Date.now();
+
+  if (response !== 0) {
+    const result = addToChatGPTConfig(chatgptConfigFile(), server);
+    logConnect(result, "ChatGPT");
+    if (!wroteSomewhere(result)) return couldntWrite(result, "ChatGPT");
+    watchForConnector(notes, since, "ChatGPT");
+    await dialog.showMessageBox(win, {
+      type: "info",
+      message: running ? "Restart ChatGPT when you're ready" : "Open ChatGPT when you're ready",
+      detail: `${running ? `Quit the ChatGPT app completely (${quit}), then open it again.` : "Open the ChatGPT app."} Scram Desktop will tell you when ChatGPT has picked it up. ${done}`,
+    });
+    return;
+  }
+
+  win?.setProgressBar(2);
+  let outcome;
+  try {
+    outcome = await connectAndStartChatGPT(server, { log });
+  } finally {
+    win?.setProgressBar(-1);
+  }
+  logConnect(outcome.result, "ChatGPT");
+  if (!wroteSomewhere(outcome.result)) return couldntWrite(outcome.result, "ChatGPT");
+  if (!outcome.started) {
+    watchForConnector(notes, since, "ChatGPT");
+    await dialog.showMessageBox(win, {
+      type: "warning",
+      message: "Couldn't restart ChatGPT by itself",
+      detail: `Quit the ChatGPT app completely (${quit}), then open it again. Scram Desktop will tell you when ChatGPT has picked it up. ${done}`,
+    });
+    return;
+  }
+  // ChatGPT may only start its local tools when a chat needs them, so a short wait, then the
+  // person is told to start a chat, and Scram Desktop says "Connected" when ChatGPT starts it.
+  log("The ChatGPT app is open again; waiting for it to start Scram Desktop's connector.");
+  win?.setProgressBar(2);
+  const picked = await waitForConnector(notes, since, 20000);
+  win?.setProgressBar(-1);
+  if (picked) {
+    log("ChatGPT started Scram Desktop's connector.");
+    await dialog.showMessageBox(win, { type: "info", message: "Connected: ChatGPT is using Scram Desktop", detail: done });
+    return;
+  }
+  watchForConnector(notes, since, "ChatGPT");
+  const { response: help } = await dialog.showMessageBox(win, {
+    type: "info",
+    message: "ChatGPT is set up: now start a new chat",
+    detail: `${done}\n\nScram Desktop will tell you when ChatGPT starts using it. If ChatGPT says it can't use Scram, click Copy details and send them to the Scram team.`,
+    buttons: ["OK", "Copy details"],
+    defaultId: 0,
+    cancelId: 0,
+  });
+  if (help === 1) copyConnectionDetails();
 }
 
 // Claude restarted but never started the connector: show what Claude's own log says about it,
@@ -300,12 +409,16 @@ async function claudeDidntPickItUp() {
     defaultId: 0,
     cancelId: 1,
   });
-  if (response === 0) copyClaudeDetails();
+  if (response === 0) copyConnectionDetails();
 }
 
-async function copyClaudeDetails() {
-  const report = await claudeConnectionReport({ settingsDir: app.getPath("userData"), version: app.getVersion(), execPath: process.execPath, connectorPath: connectorFile() });
-  log(`Claude app connection details:\n${report}`);
+// Everything the Scram team needs to see why the Claude or ChatGPT app didn't connect.
+async function copyConnectionDetails() {
+  const settingsDir = app.getPath("userData");
+  const claude = await claudeConnectionReport({ settingsDir, version: app.getVersion(), execPath: process.execPath, connectorPath: connectorFile() });
+  const chatgpt = await chatgptConnectionReport({ settingsDir });
+  const report = `${claude}\n\n${chatgpt}`;
+  log(`Connection details:\n${report}`);
   copy(report, "The details");
 }
 
@@ -315,14 +428,15 @@ async function welcome() {
     type: "info",
     message: "Connect Scram Desktop to Claude",
     detail:
-      "Log in to Scram in this window, then connect the AI assistant you use. You only do this once.\n\n\u2022 The Claude desktop app: most people.\n\u2022 Claude Code: if you use Claude in Terminal or PowerShell.\n\nYou can do this later from the Scram Desktop menu.",
-    buttons: ["The Claude desktop app", "Claude Code", "Another assistant\u2026", "Later"],
+      "Log in to Scram in this window, then connect the AI assistant you use. You only do this once.\n\n\u2022 The Claude desktop app: most people.\n\u2022 Claude Code: if you use Claude in Terminal or PowerShell.\n\u2022 The ChatGPT desktop app.\n\nYou can do this later from the Scram Desktop menu.",
+    buttons: ["The Claude desktop app", "Claude Code", "The ChatGPT desktop app", "Another assistant\u2026", "Later"],
     defaultId: 0,
-    cancelId: 3,
+    cancelId: 4,
   });
   if (response === 0) connectClaudeApp();
   if (response === 1) connectClaude();
-  if (response === 2) showConnectionDetails();
+  if (response === 2) connectChatGPTApp();
+  if (response === 3) showConnectionDetails();
 }
 
 // Connect Claude Code with one click: runs `claude mcp add …` (for all folders) with this app's
@@ -369,7 +483,7 @@ function showConnectionDetails() {
     message: "Connect an AI agent to Scram",
     detail: [
       "1. Log in to Scram in this window.",
-      "2. Connect your agent. For the Claude desktop app, use Connect the Claude desktop app instead (one click, no token needed). For Claude Code, click Connect Claude Code, or run this once in a terminal:",
+      "2. Connect your agent. For the Claude or ChatGPT desktop app, use Connect the Claude desktop app or Connect the ChatGPT desktop app instead (one click, no token needed). For Claude Code, click Connect Claude Code, or run this once in a terminal:",
       "",
       claudeCode,
       "",
@@ -393,7 +507,7 @@ async function makeNewToken() {
   const { response } = await dialog.showMessageBox(win, {
     type: "warning",
     message: "Make a new token?",
-    detail: "The Claude desktop app picks up the new token by itself. Other agents connected with the old token (Claude Code, Cursor…) stop working until you connect them again.",
+    detail: "The Claude and ChatGPT desktop apps pick up the new token by themselves. Other agents connected with the old token (Claude Code, Cursor…) stop working until you connect them again.",
     buttons: ["Make a new token", "Cancel"],
     defaultId: 1,
     cancelId: 1,
@@ -414,13 +528,14 @@ function buildMenu() {
       submenu: [
         { label: "Connect the Claude desktop app", click: connectClaudeApp },
         { label: "Connect Claude Code", click: connectClaude },
+        { label: "Connect the ChatGPT desktop app", click: connectChatGPTApp },
         { label: "Connect another agent…", click: showConnectionDetails },
         { label: "Copy Claude Code command", click: () => mcp && copy(connectInfo(mcp.url, config.token).claudeCode, "Claude Code command") },
         { label: "Make a new token…", click: makeNewToken },
         { type: "separator" },
         { label: "Go to Scram dashboard", click: () => win?.loadURL(urls.home) },
         { label: "Show log file", click: () => shell.showItemInFolder(join(app.getPath("userData"), "scram-desktop.log")) },
-        { label: "Copy Claude app connection details", click: copyClaudeDetails },
+        { label: "Copy connection details (for the Scram team)", click: copyConnectionDetails },
         ...(isMac ? [] : [{ type: "separator" }, { role: "quit" }]),
       ],
     },

@@ -1,5 +1,5 @@
 // What an agent is told about Scram Desktop when it connects (the MCP server's "instructions").
-// Its own file so the Claude desktop app connector (claude-connector/connector.js) can use it too.
+// Its own file so the connector the Claude and ChatGPT desktop apps run (connector/connector.js) can use it too.
 
 export const INSTRUCTIONS = `Scram Desktop drives Scram (an AI app builder) through Scram's own AI chat, in a desktop window on the user's computer that is logged in as the user.
 

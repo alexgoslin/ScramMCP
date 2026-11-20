@@ -52,12 +52,15 @@ esac
 
 [ -e "$bin" ] || { echo "No built app at $bin: build it first (npm run dist:mac / dist:win / dist:linux)." >&2; exit 1; }
 
-# The Claude desktop app connector must be inside the app ("Connect the Claude desktop app").
+# The connector must be inside the app ("Connect the Claude/ChatGPT desktop app"), and the old
+# path Claude connections made by 0.3.x point at.
 case "$(uname -s)" in
-  Darwin) connector="$app/Contents/Resources/claude-connector/index.mjs" ;;
-  *) connector="$(dirname "$bin")/resources/claude-connector/index.mjs" ;;
+  Darwin) resources="$app/Contents/Resources" ;;
+  *) resources="$(dirname "$bin")/resources" ;;
 esac
-[ -s "$connector" ] && [ -s "$(dirname "$connector")/tools.json" ] || { echo "The Claude connector is missing from the app: $connector" >&2; exit 1; }
-echo "== Claude connector inside the app: $connector"
+connector="$resources/connector/index.mjs"
+[ -s "$connector" ] && [ -s "$(dirname "$connector")/tools.json" ] || { echo "The connector is missing from the app: $connector" >&2; exit 1; }
+[ -s "$resources/claude-connector/index.mjs" ] || { echo "The old connector path is missing from the app: $resources/claude-connector/index.mjs" >&2; exit 1; }
+echo "== Connector inside the app: $connector"
 echo "== End-to-end test of the installed app"
 SCRAM_MCP_TEST_BINARY="$bin" node --test test/electron.test.js

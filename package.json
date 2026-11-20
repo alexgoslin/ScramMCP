@@ -1,7 +1,7 @@
 {
   "name": "scram-desktop",
   "productName": "Scram Desktop",
-  "version": "0.3.5",
+  "version": "0.4.0",
   "description": "Scram Desktop: Scram in a desktop window, plus a local MCP server so AI agents on your computer (Claude, Codex, Cursor…) can build in Scram through its AI chat.",
   "author": "Scram Software Limited",
   "homepage": "https://github.com/alexgoslin/ScramMCP",
@@ -18,13 +18,14 @@
     "dist:win": "npm run build:connector && electron-builder --config installer/electron-builder.yml --win --publish never",
     "dist:mac": "npm run build:connector && electron-builder --config installer/electron-builder.yml --mac --publish never",
     "dist:linux": "npm run build:connector && electron-builder --config installer/electron-builder.yml --linux --publish never",
-    "build:connector": "node claude-connector/build.mjs"
+    "build:connector": "node connector/build.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/fastify": "2.0.1",
     "@modelcontextprotocol/node": "2.1.2",
     "@modelcontextprotocol/server": "2.4.0",
     "fastify": "^5.12.8",
+    "smol-toml": "1.9.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {

@@ -7,7 +7,7 @@ Research from November 2026, in reply to George's notes. Items marked **(check)*
 | 1 | Mac: no "Open Anyway" step (Apple notarization) | Scram (Apple enrolment), then me (build settings) | US$99/yr | 1–3 weeks, mostly Apple paperwork |
 | 2 | Windows: no warning, and no Smart App Control block (code signing) | Scram (Azure account), then me | ~US$10/month | 1–4 weeks, mostly Microsoft's checks |
 | 3 | Claude desktop app: connect with one click, with no token in a chat | Me | none | **Built** (v0.3.5: one click + Claude restart, including the Microsoft Store Claude's new settings folder); needs a try in the real Claude app |
-| 4 | Other assistants (OpenAI Codex, Cursor, VS Code Copilot, Gemini…) | Me | none | a few days |
+| 4 | Other assistants (ChatGPT, OpenAI Codex, Cursor, VS Code Copilot, Gemini…) | Me | none | **ChatGPT desktop app built** (v0.4.0, one click); others a few days each, if wanted |
 
 Items 1 and 2 are the only ones that need Scram to sign up for something, so they're the ones to start first.
 
@@ -109,6 +109,12 @@ Most coding assistants can use Scram Desktop's local server with a token. Each k
 3. The **Connect another agent…** box keeps a copy-paste version for anything else.
 
 **Caveat:** OpenAI, Google and Microsoft change these settings formats often. Each button needs a quick test against the real product before release.
+
+**Update (v0.4.0): Connect the ChatGPT desktop app.** Scram chose the ChatGPT desktop app (not a Codex-specific button). The ChatGPT desktop app now reads local tools from the same file as Codex, `.codex/config.toml` in the home folder, so the button works like the Claude one:
+- It adds a `[mcp_servers.scram]` table that runs Scram Desktop's connector (no token in it), and leaves the rest of the file alone. The result is checked with a TOML parser before it's saved. Codex picks the entry up too, at no extra cost.
+- It quits ChatGPT (`ChatGPT.exe` / `ChatGPT`), writes the file, starts ChatGPT again, and says **Connected** when ChatGPT starts the connector.
+- **Known OpenAI issue:** [openai/codex#38162](https://github.com/openai/codex/issues/38162) (open in November 2026) reports that the ChatGPT desktop app finds local tools but doesn't offer them in normal chats, on Windows and Mac; some report they work in other modes. Our side can't fix that. Once OpenAI does, it works with no change from us.
+- **Not yet tried with a real ChatGPT account:** the file format, the app's program name and its Start-menu name come from OpenAI's docs and reports, and are checked by tests, but need one real try on a PC and a Mac.
 
 ---
 
