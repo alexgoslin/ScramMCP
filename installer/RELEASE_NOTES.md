@@ -11,7 +11,7 @@ Windows may say "Windows protected your PC", because the installer isn't code-si
 
 1. Log in to Scram in the Scram Desktop window.
 2. Connect Claude, from the **Scram Desktop** menu:
-   - **Claude desktop app:** click **Connect the Claude desktop app**, then **Restart Claude** when it asks. That's all: nothing to copy, paste or install.
+   - **Claude desktop app:** click **Connect the Claude desktop app**, then **Restart Claude and connect**. That's all: nothing to copy, paste or install. (Fixed in 0.3.5: this now works with the Microsoft Store version of Claude on Windows, which recently moved its settings to a new folder.)
    - **Claude Code** (Terminal): click **Connect Claude Code**. You need [Claude Code](https://code.claude.com/docs/en/setup) installed.
 3. Ask Claude to build something in Scram.
 

@@ -78,9 +78,9 @@ The Scram Desktop window shows Scram as you know it. **Log in as usual.** Scram 
 
    ![Screenshot 7: the Scram Desktop menu with "Connect the Claude desktop app" highlighted](images/07-connect-menu.png)
 
-3. If Claude is open, Scram Desktop asks to restart it, because Claude only picks up new connections when it starts. Click **Restart Claude**. Scram Desktop then waits until Claude has picked it up and says **"Connected"**.
+3. Click **Restart Claude and connect** (or **Open Claude and connect** if Claude isn't open). Claude only picks up new connections when it starts, so Scram Desktop closes Claude and opens it again. It then waits until Claude has picked it up and says **"Connected"**.
 
-   ![Screenshot 8: the "Restart the Claude app to finish" message](images/08-restart-claude.png)
+   ![Screenshot 8: the "Connect the Claude desktop app" message with "Restart Claude and connect"](images/08-restart-claude.png)
 
 That's it. You don't need to copy, paste or install anything.
 
@@ -141,7 +141,7 @@ Claude never **publishes** your app, **deletes** anything, or touches **sharing,
 
 | What you see | What to do |
 |---|---|
-| **Claude desktop app:** Claude doesn't seem to know about Scram | Quit the Claude app completely (Windows: right-click its icon by the clock → **Quit**; Mac: **Claude → Quit Claude**) and open it again, then start a new chat. If that doesn't help, click **Connect the Claude desktop app** in Scram Desktop again. In Claude, **Settings → Desktop app → Extensions → Local MCP servers** should list **scram**. |
+| **Claude desktop app:** Claude doesn't seem to know about Scram | Start a **new chat** in Claude. If that doesn't help, click **Connect the Claude desktop app** in Scram Desktop again. If it says Claude hasn't started Scram Desktop, click **Copy details** and paste them in the comments (they don't include any passwords or keys). In Claude, **Settings → Desktop app → Extensions → Local MCP servers** should list **scram**. |
 | **Claude Code:** Claude says it can't reach Scram, or "scram" isn't in its list of tools | Make sure Scram Desktop is open. Then, in Claude Code, type `/mcp` and check **scram** says *connected*. If it doesn't, click **Connect Claude Code** in Scram Desktop again, then restart Claude Code (type `/exit`, then `claude`). |
 | Claude says you need to log in | Log in to Scram in the Scram Desktop window. |
 | Nothing happens when you open Scram Desktop | It may already be running in the background. Restart your computer, or on Windows end **Scram Desktop** in Task Manager, then open it again. |
@@ -161,7 +161,7 @@ Screenshots to take, saved with these names:
 05-mac-open-anyway.png   System Settings → Privacy & Security → "Scram Desktop was blocked…" with Open Anyway
 06-logged-in.png         Scram Desktop window on the Scram dashboard after logging in
 07-connect-menu.png      Scram Desktop menu open, "Connect the Claude desktop app" highlighted (take on a Mac: menu bar)
-08-restart-claude.png    Scram Desktop's "Restart the Claude app to finish" message (Restart Claude button)
+08-restart-claude.png    Scram Desktop's "Connect the Claude desktop app" message (Restart Claude and connect button)
 09-claude-working.png    Side by side: a Claude desktop app chat using Scram, and Scram Desktop showing the message in
                          Scram's chat with the bot replying
 
