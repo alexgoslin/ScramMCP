@@ -16,4 +16,6 @@ Windows may say "Windows protected your PC", because the installer isn't code-si
    - **ChatGPT desktop app** (new in 0.4.0): click **Connect the ChatGPT desktop app**, then **Restart ChatGPT and connect**, and start a new chat in ChatGPT. Nothing to copy, paste or install. (ChatGPT's desktop app sometimes doesn't offer local tools in normal chats yet: a known issue on OpenAI's side.)
 3. Ask Claude to build something in Scram.
 
+**New in 0.5.0: Claude (or ChatGPT) can test the app it builds.** In Run mode, it reads the app's pages, fills in forms, clicks buttons and links, and checks the result, then tells Scram's bot about anything that doesn't work. Try: *"Using Scram, test the order form and fix anything that doesn't work."* It asks you first before clicking anything that could delete data, cost money or send something for real.
+
 Keep the Scram Desktop window open while Claude works in Scram. To stop, close the window.

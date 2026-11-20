@@ -43,7 +43,8 @@ test("a current (v2) client lists and calls the tools", async () => {
   const { tools } = await client.listTools();
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
-    "scram_answer_question", "scram_approve_plan", "scram_choose", "scram_edit_mode", "scram_list_projects",
+    "scram_answer_question", "scram_app_click", "scram_app_read", "scram_app_scroll", "scram_app_type",
+    "scram_approve_plan", "scram_choose", "scram_edit_mode", "scram_list_projects",
     "scram_new_project", "scram_open_project", "scram_read_chat", "scram_run_mode", "scram_screenshot",
     "scram_send_message", "scram_status", "scram_stop_bot", "scram_wait_for_reply",
   ]);
@@ -64,7 +65,7 @@ test("an older (v1 SDK, 2025 protocol) client works too", async () => {
   const client = new V1Client({ name: "old", version: "1.0.0" });
   await client.connect(new V1Transport(new URL(srv.url), { requestInit: auth }));
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 14);
+  assert.equal(tools.length, 18);
   const res = await client.callTool({ name: "scram_status", arguments: {} });
   assert.match(res.content[0].text, /"place": "editor"/);
   await client.close();

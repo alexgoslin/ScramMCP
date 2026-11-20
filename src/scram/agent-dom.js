@@ -37,6 +37,22 @@
   ].join(",");
   const LAYERS = "[role=dialog],[role=alertdialog],[role=menu],[role=listbox],[role=tooltip],dialog[open],[aria-modal=true]";
 
+  // A form field's name, as a person reads it: its <label> (without the field's own text, e.g. a
+  // dropdown's options), else its placeholder, title or name. Never what's typed in it.
+  const isField = (el) => el.tagName === "SELECT" || el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && !/^(button|submit|reset|image|hidden)$/.test(el.type));
+  function fieldLabel(el) {
+    for (const label of el.labels || []) {
+      const t = clean(
+        [...label.childNodes]
+          .filter((n) => !(n.nodeType === 1 && (isField(n) || n.matches?.("select,option,input,textarea"))))
+          .map((n) => n.textContent)
+          .join(" ")
+      );
+      if (t) return t.slice(0, 120);
+    }
+    return clean(el.getAttribute("placeholder") || el.getAttribute("title") || el.getAttribute("name") || "").slice(0, 120);
+  }
+
   function labelOf(el) {
     const aria = el.getAttribute("aria-label");
     if (aria) return clean(aria);
@@ -45,6 +61,7 @@
       const t = by.split(/\s+/).map((id) => document.getElementById(id)?.innerText || "").join(" ");
       if (clean(t)) return clean(t);
     }
+    if (isField(el)) return fieldLabel(el);
     const text = clean(el.innerText || el.textContent);
     if (text) return text.slice(0, 120);
     if (el.value && el.type !== "password") return clean(String(el.value)).slice(0, 60);
@@ -65,7 +82,7 @@
     try {
       const u = new URL(el.href);
       if (u.protocol === "javascript:") return undefined;
-      return u.origin === location.origin ? u.pathname + u.search : u.href;
+      return u.origin === location.origin ? u.pathname + u.search + u.hash : u.href;
     } catch {
       return undefined;
     }
@@ -725,9 +742,14 @@
         }
       }
     }
+    // Where the frame's own page is drawn (inside its border; a CSS scale, e.g. a phone-size
+    // preview, applied), so a point in the frame's page can be turned into a point in the window.
+    const sx = f.offsetWidth ? r.width / f.offsetWidth : 1;
+    const sy = f.offsetHeight ? r.height / f.offsetHeight : 1;
     return {
       rect: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 },
       full: { x: r.left, y: r.top, w: r.width, h: r.height },
+      content: { x: r.left + f.clientLeft * sx, y: r.top + f.clientTop * sy, w: f.clientWidth * sx, h: f.clientHeight * sy },
       dpr: devicePixelRatio || 1,
       vw: innerWidth,
       vh: innerHeight,
@@ -1278,6 +1300,8 @@
   };
   const ownText = (el) => clean([...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(" "));
   function lineFor(el, allowHeader) {
+    // A field's <label> is its name: listing the label as well only repeats it.
+    if (el.tagName === "LABEL" && (el.control || el.querySelector("input,select,textarea")) && !pointerish(el)) return null;
     const interactive = el.matches(INTERACTIVE) || pointerish(el);
     let role = roleOfEl(el);
     let name = "";
@@ -1299,7 +1323,7 @@
     if (checked != null && checked !== "") bits.push(`checked=${checked}`);
     if (el.getAttribute("aria-expanded")) bits.push(`expanded=${el.getAttribute("aria-expanded")}`);
     if (el.getAttribute("aria-selected") === "true" || el.getAttribute("aria-current")) bits.push("selected");
-    if (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) && el.type !== "password" && el.value) bits.push(`value="${clean(String(el.value)).slice(0, 80)}"`);
+    if (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) && !/^(password|checkbox|radio)$/.test(el.type) && el.value) bits.push(`value="${clean(String(el.value)).slice(0, 80)}"`);
     if (el.getAttribute("placeholder") && !el.value) bits.push(`placeholder="${clean(el.getAttribute("placeholder")).slice(0, 60)}"`);
     if (el.tagName === "A" && hrefOf(el)) bits.push(`href="${hrefOf(el)}"`);
     if (interactive && isHeaderControl(el)) bits.push(allowHeader ? "chat title row" : "OFF-LIMITS section header");
@@ -1409,6 +1433,26 @@
     const r = typeText(idOf(el), String(value ?? ""));
     return r.ok ? { ok: true, text: `Set ${ref} to "${String(value).slice(0, 80)}".` } : { error: `Couldn't type into ${ref}.` };
   }
+  // The field a ref stands for: itself if it's one, the field a <label> is for, or the one field
+  // inside it. Returns that field's ref (or the same ref if there's no field).
+  function fieldRef(ref) {
+    const el = byRef(ref);
+    if (!el) return null;
+    const FIELD = "input:not([type=hidden]),textarea,select,[contenteditable=''],[contenteditable=true],[role=textbox],[role=combobox]";
+    if (el.matches(FIELD)) return ref;
+    const field = (el.tagName === "LABEL" && el.control) || [...el.querySelectorAll(FIELD)].find(isVisible);
+    return field ? refOf(field) : ref;
+  }
+  // What a field holds now (to check typing worked), and whether it has the keyboard focus.
+  function refValue(ref) {
+    const el = byRef(ref);
+    if (!el) return null;
+    const focused = document.activeElement === el || el.contains(document.activeElement) || (document.activeElement && document.activeElement.contains(el));
+    if (el.tagName === "SELECT") return { tag: "select", value: clean(el.options[el.selectedIndex]?.text || ""), focused };
+    if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") return { tag: el.tagName.toLowerCase(), type: el.type || "", value: el.value, focused, checkbox: el.type === "checkbox" || el.type === "radio" };
+    if (el.isContentEditable) return { tag: "editable", value: el.innerText, focused };
+    return { tag: el.tagName.toLowerCase(), value: null, focused, checkbox: /checkbox|switch|radio/.test(el.getAttribute("role") || "") };
+  }
   function scrollToRef(ref) {
     const el = byRef(ref);
     if (!el) return { error: `${ref} is stale or not found on the current page. Re-read the page to get fresh references.` };
@@ -1448,7 +1492,7 @@
   }
 
   window.__sabDom = {
-    a11yTree, findRefs, refTarget, elementAt, focusedInfo, formInput, scrollToRef, viewport, setRefPrefix, settle,
+    a11yTree, findRefs, refTarget, refValue, fieldRef, elementAt, focusedInfo, formInput, scrollToRef, viewport, setRefPrefix, settle,
     findText, modeToggle, closePanel, panelCloseTarget, projectNameTarget, typeActive, backTarget, frontendTab, chatPanelBox, chatExpandTarget, chatHeaderInfo, newChatTarget, isHeaderId: (id) => isHeaderControl(byId(id)),
     snapshot, describeTarget, click, typeText, pressKey, scroll, bodyText, signature, extract,
     findChatInput, findSendButton, inputValue, typeChat, isGenerating, chatText, chatReadable, awaitingUser, attachFile, attachVia, scanChat, fileShown, composerState, centerOf, expandCollapsed, chatAtBottom, previewFrame, chatColumn,

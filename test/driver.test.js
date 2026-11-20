@@ -114,6 +114,74 @@ test("Run mode and Edit mode", async () => {
   assert.equal((await driver.status()).chat_box_found, true);
 });
 
+test("tests the running app: reads it, types, chooses, clicks, scrolls (Run mode)", async () => {
+  // (Still in Run mode from the test before.) The app is in Scram's preview frame, from another address.
+  assert.equal((await driver.status()).mode, "run");
+  const appFrame = () => page.frames().find((f) => f.url().startsWith(site.appUrl));
+  const state = () => appFrame().evaluate(() => ({ ...window.appState, orders: window.appOrders.length }));
+
+  const first = await driver.readApp();
+  assert.match(first, /“Bakery Orders”/);
+  assert.match(first, /Place an order/);
+  assert.match(first, /\[app_ref_\d+\]/);
+  assert.doesNotMatch(first, /Describe the problem/); // only the app, not Scram's editor
+  const found = await driver.readApp({ find: "place order" });
+  assert.match(found.split("\n")[1], /button "Place order" \[app_ref_\d+\]/);
+
+  // Typed and chosen with real input: the app only keeps what its input events tell it.
+  assert.match(await driver.typeInApp({ field: "Name", text: "Ada" }), /Typed “Ada” into/);
+  await driver.typeInApp({ field: "Email", text: "ada@example.com" });
+  assert.match(await driver.typeInApp({ field: "Cake", text: "Lemon" }), /Chose “Lemon”/);
+  await driver.clickApp({ text: "Gift wrap" });
+  assert.deepEqual(await state(), { name: "Ada", email: "ada@example.com", cake: "Lemon", gift: true, orders: 0 });
+  const ordered = await driver.clickApp({ text: "Place order" });
+  assert.match(ordered, /Clicked “Place order”/);
+  assert.match(ordered, /Thanks, Ada! Your lemon cake is ordered \(gift wrapped\)\./); // what the app shows afterwards
+  assert.equal((await state()).orders, 1);
+
+  // Adding to a field, replacing it, and pressing Enter (submits the form).
+  await driver.typeInApp({ field: "Name", text: " Lovelace", clear: false });
+  assert.equal((await state()).name, "Ada Lovelace");
+  const entered = await driver.typeInApp({ field: "Email", text: "ada@lovelace.org", pressEnter: true });
+  assert.match(entered, /then pressed Enter/);
+  assert.match(entered, /Thanks, Ada Lovelace!/);
+  assert.equal((await state()).orders, 2);
+
+  // Scrolling: to something far down the page, and back to the top.
+  const all = await driver.readApp({ filter: "all" });
+  const footer = all.match(/"Bakery Orders, made with Scram" \[(app_ref_\d+)\]/)[1];
+  assert.doesNotMatch(await driver.readApp(), /made with Scram/); // not on screen yet
+  assert.match(await driver.scrollApp({ ref: footer }), /made with Scram/);
+  assert.match(await driver.scrollApp({ direction: "top" }), /Place an order/);
+
+  // Following a link to another page of the app.
+  const orders = await driver.clickApp({ text: "Today's orders" });
+  assert.match(orders, /Ada Lovelace: Lemon/);
+  assert.match(orders, /#orders/);
+
+  // Something that deletes data: only with confirm (after asking the user).
+  await assert.rejects(driver.clickApp({ text: "Delete all orders" }), /could delete data.*Ask the user first.*confirm: true/s);
+  assert.equal((await state()).orders, 2);
+  assert.match(await driver.clickApp({ text: "Delete all orders", confirm: true }), /No orders yet/);
+  assert.equal((await state()).orders, 0);
+
+  // Never clicks through something of Scram's that covers the app.
+  await page.evaluate(() => {
+    const d = document.createElement("div");
+    d.id = "cover";
+    d.textContent = "Plans";
+    d.style.cssText = "position:fixed;left:300px;top:40px;right:0;bottom:0;background:#fff;z-index:9";
+    document.body.append(d);
+  });
+  await assert.rejects(driver.clickApp({ text: "Order" }), /covering the running app/);
+  await page.evaluate(() => document.getElementById("cover").remove());
+
+  // A wrong reference, and Edit mode.
+  await assert.rejects(driver.clickApp({ ref: "app_ref_99999" }), /isn't on the app's page any more/);
+  await driver.setMode("edit");
+  await assert.rejects(driver.readApp(), /isn't in Run mode.*scram_run_mode/);
+});
+
 test("a long message is typed in full", async () => {
   const long = "Please build this.\n" + Array.from({ length: 80 }, (_, i) => `Requirement ${i + 1}: the page must do thing number ${i + 1}.`).join("\n");
   const r = await driver.sendMessage(long, { waitMs: 60000 });

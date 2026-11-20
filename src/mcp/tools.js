@@ -239,6 +239,75 @@ export function createScramMcpServer(driver, { version = "0.1.0", activity } = {
     guard("scram_new_project", activity, async ({ name }) => json(await driver.newProject({ name })))
   );
 
+  // Testing the running app (Run mode).
+  const appRef = z.string().regex(/^app_ref_\d+$/).optional().describe("A reference from scram_app_read, like app_ref_12.");
+  const appText = (t) => text(t);
+
+  server.registerTool(
+    "scram_app_read",
+    {
+      title: "Read the running app",
+      description:
+        "Read the app Scram is building, as it runs in Scram's Run mode (call scram_run_mode first): its page as text, with a reference (app_ref_N) for each button, link and field, to use with scram_app_click and scram_app_type. Use this to test the app the bot built: check pages show the right things, then click through it and fill in its forms.",
+      inputSchema: z.object({
+        filter: z.enum(["visible", "interactive", "all"]).optional().describe('"visible" (default): what\'s on screen now; "interactive": only buttons, links and fields; "all": the whole page, including below the fold.'),
+        find: z.string().optional().describe('Instead of the whole page: the elements best matching these words, e.g. "email field" or "submit".'),
+      }),
+      annotations: readOnly,
+    },
+    guard("scram_app_read", activity, async ({ filter, find }) => appText(await driver.readApp({ filter: filter || "visible", find: find || "" })))
+  );
+
+  server.registerTool(
+    "scram_app_click",
+    {
+      title: "Click in the running app",
+      description:
+        "Click a button, link, checkbox or tab in the running app (Run mode), with a real mouse click, then return what the app shows afterwards. Give its reference from scram_app_read, or its text. Testing can change the app's data, like a real user would: anything that looks like it deletes data, costs money or sends something (\"Delete\", \"Pay\", \"Send email\"…) is only clicked with confirm: true, after the user has agreed.",
+      inputSchema: z.object({
+        ref: appRef,
+        text: z.string().optional().describe("Or the text of what to click, e.g. \"Place order\"."),
+        confirm: z.boolean().optional().describe("Only after the user agreed: click something that may delete data, cost money or send something for real."),
+      }),
+      annotations: acts,
+    },
+    guard("scram_app_click", activity, async ({ ref, text: label, confirm }) => appText(await driver.clickApp({ ref, text: label, confirm: !!confirm })))
+  );
+
+  server.registerTool(
+    "scram_app_type",
+    {
+      title: "Type in the running app",
+      description:
+        "Type into a text field of the running app (Run mode) the way a person would: click it, replace what's there (or add to it), and optionally press Enter. For a dropdown, give the option's text to choose it. Then returns what the app shows afterwards. Checkboxes: use scram_app_click.",
+      inputSchema: z.object({
+        ref: appRef,
+        field: z.string().optional().describe('Or the field\'s label or placeholder, e.g. "Email".'),
+        text: z.string().describe("What to type (or the dropdown option to choose)."),
+        clear: z.boolean().optional().describe("Replace what's in the field (default true). false adds to the end."),
+        press_enter: z.boolean().optional().describe("Press Enter afterwards, e.g. to submit a search (default false)."),
+      }),
+      annotations: acts,
+    },
+    guard("scram_app_type", activity, async ({ ref, field, text: value, clear, press_enter }) =>
+      appText(await driver.typeInApp({ ref, field, text: value, clear: clear ?? true, pressEnter: !!press_enter }))
+    )
+  );
+
+  server.registerTool(
+    "scram_app_scroll",
+    {
+      title: "Scroll the running app",
+      description: "Scroll the running app's page (Run mode) up, down, to the top, or to an element, then return what's on screen. Useful before a screenshot of the app.",
+      inputSchema: z.object({
+        direction: z.enum(["down", "up", "top"]).optional().describe('"down" (default), "up" or "top".'),
+        ref: appRef,
+      }),
+      annotations: { ...readOnly, idempotentHint: false },
+    },
+    guard("scram_app_scroll", activity, async ({ direction, ref }) => appText(await driver.scrollApp({ direction: direction || "down", ref })))
+  );
+
   server.registerTool(
     "scram_screenshot",
     {

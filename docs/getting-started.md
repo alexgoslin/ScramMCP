@@ -130,10 +130,13 @@ You'll see Claude's messages appear in Scram's AI chat, Scram's bot reply, and t
 - Stop the bot if it's going the wrong way
 - Open your projects, or create new ones
 - Take screenshots to check the result
+- **Test the app it built**, like a person would: in Run mode, it reads the app's pages, fills in forms, clicks buttons and links, and checks what happens. If something doesn't work, it tells Scram's bot what went wrong, then tests again. Try asking: *"Using Scram, test the order form and fix anything that doesn't work."*
 
 ### What Claude won't do
 
 Claude never **publishes** your app, **deletes** anything, or touches **sharing, billing or your account**. Those stay with you.
+
+Testing your app works like a real user, so it can add test data to your app (for example a test order). Before it clicks anything in your app that could delete data, cost money or send something for real, Claude has to ask you first.
 
 ---
 

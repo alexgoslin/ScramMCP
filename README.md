@@ -83,6 +83,10 @@ Keep the app open while the agent works. It can be minimised, because Scram's AI
 | `scram_open_project` | Opens a project by editor URL or by name |
 | `scram_new_project` | Creates a new empty project, optionally named |
 | `scram_screenshot` | A picture of the window, or just the running app in Run mode |
+| `scram_app_read` | **Testing the app** (Run mode): the running app's page as text, with a reference (`app_ref_N`) for each button, link and field; or just the elements matching some words |
+| `scram_app_click` | Clicks a button, link or checkbox in the running app (a real mouse click), by reference or text, and returns what the app shows afterwards |
+| `scram_app_type` | Types into a field of the running app as a person would (click, replace or add, optionally Enter), or chooses a dropdown option; returns what the app shows afterwards |
+| `scram_app_scroll` | Scrolls the running app up, down, to the top, or to an element |
 
 Waiting calls give up after 5 minutes by default (`wait_seconds` changes it). If the bot is still working then, the agent calls `scram_wait_for_reply`.
 
@@ -90,7 +94,8 @@ Waiting calls give up after 5 minutes by default (`wait_seconds` changes it). If
 
 - **Local only.** The server listens on `127.0.0.1`, so nothing on the internet can reach it. It also rejects requests whose `Host` or `Origin` isn't localhost, so a website open in your browser can't talk to it.
 - **Secret token.** Every request needs the app's token. Without it, other programs on your computer can't use your Scram account through the app. **Scram Desktop → Make a new token…** replaces it.
-- **Never clicks** Publish, delete, share, billing or log-out controls, even if asked. Publishing to Live stays a human job.
+- **Never clicks** Publish, delete, share, billing or log-out controls in Scram, even if asked. Publishing to Live stays a human job.
+- **Testing the app** works like a real user, so it can change the app's data. In the running app, anything that looks like it deletes data, costs money or sends something ("Delete", "Pay", "Send email"…) is only clicked when the agent says the user agreed (`confirm: true`). Clicks only ever land on the app itself: never on Scram's editor, or through something covering the app.
 - **One action at a time.** Scram has one chat, so a second request waits instead of mixing into the first.
 - **Credits.** Every message to Scram's bot uses your Scram credits, the same as typing it yourself.
 

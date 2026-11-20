@@ -154,6 +154,26 @@ test("the Electron app serves MCP and builds through the chat", { skip, timeout:
     assert.ok(shot.content[0].data.length > 5000);
     const app = await call("scram_screenshot", { area: "app_preview" });
     assert.equal(app.content[0].type, "image");
+
+    // Testing the app being built (in Scram's preview frame, from another address): reading it,
+    // then real typing and clicks. The app only keeps what its input events tell it, so the
+    // thank-you text proves the typing reached it as typing.
+    const appPage = textOf(await call("scram_app_read"));
+    assert.match(appPage, /Place an order/);
+    assert.match(appPage, /textbox "Name" \[app_ref_\d+\]/);
+    assert.match(textOf(await call("scram_app_type", { field: "Name", text: "Grace" })), /Typed “Grace” into “Name”/);
+    assert.match(textOf(await call("scram_app_type", { field: "Cake", text: "Carrot" })), /Chose “Carrot”/);
+    await call("scram_app_click", { text: "Gift wrap" });
+    const ordered = textOf(await call("scram_app_click", { text: "Place order" }));
+    assert.match(ordered, /Thanks, Grace! Your carrot cake is ordered \(gift wrapped\)\./);
+    const entered = textOf(await call("scram_app_type", { field: "Name", text: "Grace Hopper", press_enter: true }));
+    assert.match(entered, /Thanks, Grace Hopper!/);
+    assert.match(textOf(await call("scram_app_scroll", { direction: "down" })), /The app now/);
+    const risky = await client.callTool({ name: "scram_app_click", arguments: { text: "Today's orders" } });
+    assert.match(risky.content[0].text, /Grace Hopper: Carrot/);
+    const refused = await client.callTool({ name: "scram_app_click", arguments: { text: "Delete all orders" } });
+    assert.equal(refused.isError, true);
+    assert.match(refused.content[0].text, /Ask the user first/);
   } catch (e) {
     console.log("--- Electron output ---\n" + output);
     throw e;

@@ -11,6 +11,11 @@
 //   trustedClick(x, y), trustedKey(key)  real (trusted) mouse / keyboard input
 //   navigate(url)                        load a URL in the window
 //   screenshot({ rect, maxWidth })       { data: base64, mimeType }
+// and, for testing the running app inside Scram's Run preview:
+//   frames()                             [{ id, url }] of the frames inside the page
+//   frameViewport(id)                    { w, h, url } of a frame
+//   frameDom(id, method, ...args)        the DOM helper inside that frame
+//   insertText(text), selectAll()        typing, as a person would, where the focus is
 
 import { scramUrls } from "./urls.js";
 
@@ -35,6 +40,10 @@ const STOP_LABEL = /^(stop|stop generating|stop response|cancel generation)$/i;
 const SUBMIT_LABEL = /^(submit|submit answers?|send answers?)$/i;
 const APPROVE_LABEL = /^(approve( plan)?|accept( plan)?|approve (and|&) build|build it|proceed)$/i;
 const ANSWER_BOX = /own answer|your answer|other answer/i;
+// In the running app: controls that could delete the user's data, cost money or send something
+// for real. Clicked only when the agent says the user agreed (confirm: true).
+const RISKY_IN_APP = /\b(delete|remove|erase|destroy|wipe|reset|pay|payment|purchase|buy|checkout|check out|unsubscribe|publish|deploy|send (an? )?(e-?mail|sms|text|invoice|payment))\b/i;
+const APP_AFTER_CHARS = 4000; // how much of the app's page to show after an action
 
 const norm = (t) => (t || "").replace(/\d+/g, "#");
 const squash = (t) => String(t || "").replace(/\s+/g, " ").trim();
@@ -753,5 +762,205 @@ export class ScramDriver {
       return this.page.screenshot({ rect: pf.rect, maxWidth });
     }
     return this.page.screenshot({ maxWidth });
+  }
+
+  // ------------------------------------------------------------------ testing the running app
+
+  // In Run mode, Scram shows the app being built in a frame in the middle of the editor. These
+  // read it, and click and type in it the way a person would (real mouse clicks and typing), so
+  // an agent can check the app works. References to its elements look like "app_ref_12".
+
+  // The running app's frame. Scram must be in Run mode, with the app on screen.
+  async appFrame() {
+    await this.ensureEditor();
+    if ((await this.currentMode()) !== "run") {
+      throw new ScramError("Scram isn't in Run mode, so the app isn't running. Call scram_run_mode first, then try again.");
+    }
+    let pf = null;
+    for (let i = 0; i < 10 && !pf; i++) {
+      pf = await this.try("previewFrame");
+      if (!pf) await sleep(500);
+    }
+    if (!pf) throw new ScramError("Scram is in Run mode, but the running app isn't on screen. Check with scram_screenshot.");
+    if (pf.covered >= 0.5) {
+      throw new ScramError(`Something in Scram is covering the running app${pf.coverLabel ? ` (“${pf.coverLabel}”)` : ""}. Check with scram_screenshot.`);
+    }
+    // Which frame it is: the one drawn at the preview's size (other frames, e.g. a help widget,
+    // aren't), preferring one at the preview's address.
+    const origin = (u) => {
+      try {
+        return new URL(u).origin;
+      } catch {
+        return "";
+      }
+    };
+    let best = null;
+    for (const f of await this.page.frames()) {
+      const vp = await this.page.frameViewport(f.id).catch(() => null);
+      if (!vp || !vp.w || !vp.h) continue;
+      const scale = pf.content.w / vp.w;
+      if (Math.abs(vp.h * scale - pf.content.h) > Math.max(4, pf.content.h * 0.05)) continue; // not this size
+      const score = (vp.url === pf.src ? 2 : 0) + (pf.src && origin(vp.url) === origin(pf.src) ? 1 : 0);
+      if (!best || score > best.score) best = { id: f.id, url: vp.url, scale, score };
+    }
+    if (!best) throw new ScramError("Couldn't reach the running app inside Scram's preview. Check with scram_screenshot that it's showing.");
+    return { id: best.id, scale: best.scale, pf };
+  }
+
+  async appDom(frame, method, ...args) {
+    return this.page.frameDom(frame.id, method, ...args);
+  }
+
+  // Where an element of the app (from refTarget) is in the window, checking a click there would
+  // really land on it: inside the visible part of the preview, with nothing in front of it.
+  async appPoint(frame, target, ref) {
+    const { pf, scale } = frame;
+    const x = pf.content.x + target.x * scale;
+    const y = pf.content.y + target.y * scale;
+    if (x < pf.rect.x || y < pf.rect.y || x > pf.rect.x + pf.rect.w || y > pf.rect.y + pf.rect.h) {
+      throw new ScramError(`${ref} is outside the part of the app Scram is showing. Use scram_app_scroll, then try again.`);
+    }
+    const inApp = await this.appDom(frame, "elementAt", target.x, target.y);
+    if (inApp && inApp.label !== target.label) {
+      throw new ScramError(`Something in the app is in front of ${ref}${inApp.label ? ` (“${inApp.label}”)` : ""}. Close it first, or check with scram_screenshot (area "app_preview").`);
+    }
+    const inScram = await this.try("elementAt", x, y);
+    if (inScram && !inScram.iframe) {
+      throw new ScramError(`Something in Scram is in front of the app there${inScram.label ? ` (“${inScram.label}”)` : ""}. Check with scram_screenshot.`);
+    }
+    return { x, y };
+  }
+
+  // A reference for something on the app's page, by its text (the best match that can be clicked or typed in).
+  async appRefFor(frame, text) {
+    const found = (await this.appDom(frame, "findRefs", text))?.text || "";
+    const line =
+      found.split("\n").find((l) => /^(button|link|textbox|searchbox|combobox|checkbox|radio|switch|tab|menuitem|option|clickable)\b/.test(l) && /\[app_ref_\d+\]/.test(l)) ||
+      found.split("\n").find((l) => /\[app_ref_\d+\]/.test(l));
+    return line ? line.match(/\[(app_ref_\d+)\]/)[1] : null;
+  }
+
+  async appTarget(frame, { ref, text }) {
+    await this.appDom(frame, "setRefPrefix", "app_");
+    const r = ref || (text ? await this.appRefFor(frame, text) : null);
+    if (!r) {
+      throw new ScramError(ref || text ? `Couldn't find “${text}” on the app's page. Call scram_app_read to see what's there.` : "Say which element: a reference from scram_app_read (like app_ref_12), or its text.");
+    }
+    const t = await this.appDom(frame, "refTarget", r);
+    if (!t) throw new ScramError(`${r} isn't on the app's page any more (the page may have changed). Call scram_app_read for fresh references.`);
+    return { ref: r, target: t };
+  }
+
+  // After an action: let the app settle, then show its page (what's on screen), so the agent sees
+  // what happened without another call.
+  async appAfter(note) {
+    await sleep(300);
+    let frame;
+    try {
+      frame = await this.appFrame();
+      await this.appDom(frame, "settle", 400, 3000).catch(() => {});
+      frame = await this.appFrame(); // (it may have loaded another page)
+    } catch (e) {
+      return `${note}\n\n(Couldn't read the app afterwards: ${e.message})`;
+    }
+    await this.appDom(frame, "setRefPrefix", "app_");
+    const vp = await this.appDom(frame, "viewport");
+    const tree = await this.appDom(frame, "a11yTree", { filter: "", maxChars: APP_AFTER_CHARS });
+    return `${note}\n\nThe app now: “${vp.title}” (${vp.url})\n${tree.text || "(nothing on screen)"}`;
+  }
+
+  // The running app's page as text, with references (app_ref_N) for clicking and typing.
+  // filter: "visible" (what's on screen), "interactive" (only controls), "all" (the whole page).
+  async readApp({ filter = "visible", find = "", maxChars = 20000 } = {}) {
+    return this.exclusive("reading the running app", async () => {
+      const frame = await this.appFrame();
+      await this.appDom(frame, "setRefPrefix", "app_");
+      const vp = await this.appDom(frame, "viewport");
+      const r = find ? await this.appDom(frame, "findRefs", find) : await this.appDom(frame, "a11yTree", { filter: filter === "visible" ? "" : filter, maxChars });
+      if (r?.error) throw new ScramError(r.error);
+      return `The running app: “${vp.title}” (${vp.url})\n${r?.text || (find ? `Nothing matching “${find}”.` : "(nothing on screen)")}`;
+    });
+  }
+
+  async clickApp({ ref, text, confirm = false } = {}) {
+    return this.exclusive("clicking in the running app", async () => {
+      const frame = await this.appFrame();
+      const { ref: r, target } = await this.appTarget(frame, { ref, text });
+      const name = target.label || r;
+      if (RISKY_IN_APP.test(name) && !confirm) {
+        throw new ScramError(
+          `“${name}” could delete data, cost money or send something for real in the user's app. Ask the user first; if they agree, call scram_app_click again with confirm: true.`
+        );
+      }
+      const at = await this.appPoint(frame, target, r);
+      await this.page.trustedClick(at.x, at.y);
+      this.log(`Clicked “${name}” in the running app.`);
+      return this.appAfter(`Clicked “${name}”.`);
+    });
+  }
+
+  // Types into a text field the way a person would: clicks it, selects what's there (unless
+  // adding to it), types. A dropdown gets the option with that text instead.
+  async typeInApp({ ref, field, text = "", clear = true, pressEnter = false } = {}) {
+    return this.exclusive("typing in the running app", async () => {
+      const frame = await this.appFrame();
+      const found = await this.appTarget(frame, { ref, text: field });
+      // A field's label (or a box around it) stands for the field itself.
+      const r = (await this.appDom(frame, "fieldRef", found.ref)) || found.ref;
+      const target = r === found.ref ? found.target : await this.appDom(frame, "refTarget", r);
+      if (!target) throw new ScramError(`${r} isn't on the app's page any more. Call scram_app_read for fresh references.`);
+      const name = target.label || found.target.label || r;
+      const before = await this.appDom(frame, "refValue", r);
+      if (before?.tag === "select") {
+        const chose = await this.appDom(frame, "formInput", r, text);
+        if (chose?.error) throw new ScramError(chose.error);
+        this.log(`Chose “${text}” in the running app.`);
+        return this.appAfter(`Chose “${text}” in “${name}”.`);
+      }
+      if (before?.checkbox) throw new ScramError(`${r} (“${name}”) is a checkbox or switch: click it with scram_app_click instead.`);
+      if (!before || before.value === null) throw new ScramError(`${r} (“${name}”) isn't something you can type in. Call scram_app_read to find the text field.`);
+
+      const want = clear ? text : `${before.value}${text}`;
+      const typed = (v) => String(v ?? "").replace(/\r\n/g, "\n") === want.replace(/\r\n/g, "\n");
+      const at = await this.appPoint(frame, target, r);
+      await this.page.trustedClick(at.x, at.y);
+      await sleep(150);
+      let how = "typed";
+      if ((await this.appDom(frame, "refValue", r))?.focused) {
+        if (clear) await this.page.selectAll();
+        else await this.page.trustedKey("End");
+        if (text) await this.page.insertText(text);
+        else if (clear) await this.page.trustedKey("Backspace");
+        await sleep(100);
+      }
+      if (!typed((await this.appDom(frame, "refValue", r))?.value)) {
+        // Typing didn't land (e.g. the field didn't take the focus): set it directly, with the
+        // events an app listens for.
+        const set = await this.appDom(frame, "formInput", r, want);
+        if (set?.error || !typed((await this.appDom(frame, "refValue", r))?.value)) {
+          throw new ScramError(`Couldn't type into ${r} (“${name}”). Check with scram_screenshot (area "app_preview").`);
+        }
+        how = "filled in";
+      }
+      if (pressEnter) await this.page.trustedKey("Enter");
+      const shown = before.type === "password" ? `${text.length} characters` : `“${text.length > 80 ? `${text.slice(0, 80)}…` : text}”`;
+      this.log(`Typed into “${name}” in the running app.`);
+      return this.appAfter(`${how === "typed" ? "Typed" : "Filled in"} ${shown} ${clear ? "into" : "at the end of"} “${name}”${pressEnter ? ", then pressed Enter" : ""}.`);
+    });
+  }
+
+  async scrollApp({ direction = "down", ref } = {}) {
+    return this.exclusive("scrolling the running app", async () => {
+      const frame = await this.appFrame();
+      if (ref) {
+        await this.appDom(frame, "setRefPrefix", "app_");
+        const r = await this.appDom(frame, "scrollToRef", ref);
+        if (r?.error) throw new ScramError(r.error);
+        return this.appAfter(`Scrolled to ${ref}.`);
+      }
+      const to = direction === "top" ? "top" : direction === "up" ? -0.8 : 0.8;
+      await this.appDom(frame, "scroll", to);
+      return this.appAfter(direction === "top" ? "Scrolled to the top." : `Scrolled ${direction}.`);
+    });
   }
 }

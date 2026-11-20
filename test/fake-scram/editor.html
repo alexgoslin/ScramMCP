@@ -12,7 +12,7 @@
   more" and "Approve plan", questions as option cards (a title over a description) plus a "Write
   my own answer" box and Cancel, which replace the chat box until answered, "Page Structure"
   under the chat, Edit / Run buttons at the top right (Run = preview=run in the address), and a
-  Run preview iframe.
+  Run preview iframe showing the app (app.html, from another address).
 -->
 <style>
   body { margin: 0; font: 14px system-ui, sans-serif; }
@@ -58,7 +58,7 @@
   </div>
   <div id="structure"><div>Page Structure</div><div>Home Page</div></div>
 </div>
-<div id="canvas"><iframe title="Running app" srcdoc="<h1>My app</h1><p>Hello from the running app.</p>"></iframe></div>
+<div id="canvas"><iframe title="Running app" src="__APP_URL__"></iframe></div>
 
 <script>
   const messages = document.getElementById("messages");

@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Bakery Orders</title>
+<!--
+  A stand-in for the app a Scram project builds, as Scram's Run mode shows it (in an iframe, from
+  another address than the editor). Like a React app, it keeps what's typed only from real input
+  events, so a test that sets field values without them fails.
+-->
+<style>
+  body { font-family: sans-serif; margin: 16px; }
+  label { display: block; margin: 8px 0; }
+  #spacer { height: 1400px; }
+</style>
+</head>
+<body>
+<nav><a href="#order" id="nav-order">Order</a> · <a href="#orders" id="nav-orders">Today's orders</a></nav>
+<main>
+  <section id="order-page">
+    <h1>Place an order</h1>
+    <form id="form">
+      <label>Name <input id="name" name="name" placeholder="Your name"></label>
+      <label>Email <input id="email" name="email" type="email" placeholder="you@example.com"></label>
+      <label>Cake
+        <select id="cake"><option>Chocolate</option><option>Lemon</option><option>Carrot</option></select>
+      </label>
+      <label><input id="gift" type="checkbox"> Gift wrap</label>
+      <button type="submit">Place order</button>
+    </form>
+    <p id="result" role="status"></p>
+    <div id="spacer"></div>
+    <p id="footer">Bakery Orders, made with Scram</p>
+  </section>
+  <section id="orders-page" hidden>
+    <h1>Today's orders</h1>
+    <ul id="orders"></ul>
+    <button id="delete-all">Delete all orders</button>
+  </section>
+</main>
+<script>
+  const state = { name: "", email: "", cake: "Chocolate", gift: false };
+  const orders = [];
+  window.appState = state;
+  window.appOrders = orders;
+  for (const id of ["name", "email"]) document.getElementById(id).addEventListener("input", (e) => (state[id] = e.target.value));
+  document.getElementById("cake").addEventListener("change", (e) => (state.cake = e.target.value));
+  document.getElementById("gift").addEventListener("change", (e) => (state.gift = e.target.checked));
+  document.getElementById("form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const result = document.getElementById("result");
+    if (!state.name.trim()) {
+      result.textContent = "Please enter your name.";
+      return;
+    }
+    orders.push({ ...state });
+    result.textContent = `Thanks, ${state.name}! Your ${state.cake.toLowerCase()} cake is ordered${state.gift ? " (gift wrapped)" : ""}.`;
+    renderOrders();
+  });
+  function renderOrders() {
+    document.getElementById("orders").innerHTML = orders.map((o) => `<li>${o.name}: ${o.cake}</li>`).join("") || "<li>No orders yet</li>";
+  }
+  document.getElementById("delete-all").addEventListener("click", () => {
+    orders.length = 0;
+    renderOrders();
+  });
+  function route() {
+    const orders = location.hash === "#orders";
+    document.getElementById("order-page").hidden = orders;
+    document.getElementById("orders-page").hidden = !orders;
+    document.title = orders ? "Today's orders · Bakery Orders" : "Bakery Orders";
+  }
+  addEventListener("hashchange", route);
+  renderOrders();
+  route();
+</script>
+</body>
+</html>

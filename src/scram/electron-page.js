@@ -21,6 +21,22 @@ export function electronPage(getWin) {
     return win.webContents;
   };
   const run = (code) => wc().executeJavaScriptInIsolatedWorld(WORLD_ID, [{ code }]);
+  const callCode = (method, args) => {
+    const m = JSON.stringify(method);
+    return `(typeof window.__sabDom?.[${m}] === "function" ? window.__sabDom[${m}](...${JSON.stringify(args)}) : "__sab_missing__")`;
+  };
+  // The frames inside the page (e.g. Scram's Run preview, showing the app being built). A frame
+  // keeps its id while it loads other pages.
+  const frameId = (f) => String(f.frameTreeNodeId ?? `${f.processId}:${f.routingId}`);
+  const subFrames = () => {
+    const main = wc().mainFrame;
+    return main.framesInSubtree.filter((f) => f !== main && !f.detached);
+  };
+  const frameById = (id) => {
+    const f = subFrames().find((x) => frameId(x) === id);
+    if (!f) throw new Error("That frame has gone (the app preview may have reloaded).");
+    return f;
+  };
   // getBoundingClientRect() is in CSS pixels; input events and captures are in window pixels.
   const zoom = () => wc().getZoomFactor() || 1;
 
@@ -29,14 +45,41 @@ export function electronPage(getWin) {
     title: () => (current() ? wc().getTitle() : ""),
 
     async dom(method, ...args) {
-      const m = JSON.stringify(method);
-      const call = `(typeof window.__sabDom?.[${m}] === "function" ? window.__sabDom[${m}](...${JSON.stringify(args)}) : "__sab_missing__")`;
+      const call = callCode(method, args);
       let result = await run(call);
       if (result === "__sab_missing__") {
         await run(HELPER);
         result = await run(call);
       }
       return result;
+    },
+
+    frames: () => subFrames().map((f) => ({ id: frameId(f), url: f.url })),
+
+    // Its size and address, without adding anything to it.
+    async frameViewport(id) {
+      return frameById(id).executeJavaScript("({ w: innerWidth, h: innerHeight, url: location.href })");
+    },
+
+    // The DOM helper inside a frame. (Frames can't be given an isolated world from here, so it runs
+    // in the frame's own one: fine for the app being built, which is the user's own.)
+    async frameDom(id, method, ...args) {
+      const frame = frameById(id);
+      const call = callCode(method, args);
+      let result = await frame.executeJavaScript(call);
+      if (result === "__sab_missing__") {
+        await frame.executeJavaScript(HELPER);
+        result = await frame.executeJavaScript(call);
+      }
+      return result;
+    },
+
+    // Typing as a person would, into whatever has the keyboard focus (in any frame).
+    async insertText(text) {
+      await wc().insertText(text);
+    },
+    async selectAll() {
+      wc().selectAll();
     },
 
     async trustedClick(x, y) {
