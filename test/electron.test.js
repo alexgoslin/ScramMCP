@@ -147,6 +147,7 @@ test("the Electron app serves MCP and builds through the chat", { skip, timeout:
     assert.equal(JSON.parse(textOf(await call("scram_status"))).bot_working, true);
     assert.deepEqual(JSON.parse(textOf(await call("scram_stop_bot"))), { stopped: true });
     assert.equal(JSON.parse(textOf(await call("scram_status"))).bot_working, false);
+    assert.doesNotMatch(textOf(await call("scram_read_chat")), /All done/); // really stopped, not finished by itself
 
     assert.match(textOf(await call("scram_run_mode")), /"mode": "run"/);
     assert.match(JSON.parse(textOf(await call("scram_status"))).mode, /^run$/);

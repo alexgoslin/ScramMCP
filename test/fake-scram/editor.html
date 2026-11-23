@@ -281,7 +281,7 @@
     }
   }
 
-  send.addEventListener("click", () => (working ? (stopped = true) : submit()));
+  send.addEventListener("click", () => (working ? (stopped = window.stopPressed = true) : submit()));
   box.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();

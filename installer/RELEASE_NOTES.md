@@ -24,6 +24,7 @@ Windows may say "Windows protected your PC", because the installer isn't code-si
 - **Notices when Scram slips back into Edit mode** on its own, and switches Run back on.
 - **The full handoff method** for big builds (Setup first, small steps each with its own context and tests, a final check of everything), with templates.
 - **The autopilot is smarter:** it never lets the bot try to open Run mode itself, refreshes old previews, nudges the bot when it stops, and re-sends the step when the bot loses track.
+- **Fix:** stopping Scram's bot now only ever presses the stop button by the chat box. Before, when that button had no label, it could press another button on the screen instead.
 
 **New in 0.7.0** (from the RoboBuild extension):
 - **Theme questions.** Before making a theme, Claude asks what vibe you want, how bold, and any must-haves, then makes it with **Scram's real theme rules checked first**: six ready-made themes (Scram, Ledger, Midnight, Atelier, Playground, Clinic), or its own.

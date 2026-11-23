@@ -321,6 +321,8 @@ test("stop, wait for reply and read chat", async () => {
   const w = await driver.waitForReply({ waitMs: 30000 });
   assert.equal(w.state, "done");
   assert.match(w.reply, /Working on it/);
+  assert.doesNotMatch(w.reply, /All done/); // really stopped (not just finished by itself)
+  assert.equal(await page.evaluate(() => window.stopPressed), true); // the stop button, nothing else
   const chat = await driver.readChat({ maxChars: 50000 });
   assert.match(chat, /Do something slow/); // (the Run-mode test reloaded the page, clearing older messages)
   assert.doesNotMatch(chat, /Internal reasoning/);
@@ -383,7 +385,7 @@ test("the autopilot: only with the user's OK; builds step by step; keeps Scram t
   assert.equal(s.step, 5);
   assert.match(s.needs_you, /Stripe secret API key/);
   assert.ok(notes.some((n) => /^Autopilot needs you: .*Stripe/.test(n)), JSON.stringify(notes));
-  const log = pilot.describe();
+  const log = [pilot.describe(), ...pilot.run.history].join("\n"); // (describe() shows only the recent lines)
   assert.match(log, /1\. Pricing page: done/);
   assert.match(log, /2\. Scope: done/);
   assert.match(log, /Approved the bot's plan/);

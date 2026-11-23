@@ -1584,7 +1584,17 @@
       }
       if (pick && visible(pick)) cands.add(pick);
     }
-    const list = [...cands].filter((el) => !/attach|upload|camera|screenshot|mic|voice|record/i.test(words(el)));
+    // Only buttons right by the chat box: climbing up from it can reach the whole page, and its
+    // rightmost button there might be any of the editor's (the preview size, Run, Publish…).
+    const col = dom.chatColumn();
+    const box = input.getBoundingClientRect();
+    const near = (el) => {
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      return cx >= col.left - 2 && cx <= col.right + 2 && cy >= box.top - 80 && cy <= box.bottom + 80;
+    };
+    const list = [...cands].filter((el) => near(el) && !/attach|upload|camera|screenshot|mic|voice|record/i.test(words(el)));
     const labelled = list.find((el) => /\b(stop|cancel|interrupt|abort)\b/i.test(words(el)));
     const pick = labelled || (dom.chatWorking() ? list.sort((a, b) => b.getBoundingClientRect().right - a.getBoundingClientRect().right)[0] : null);
     if (!pick) return null;
