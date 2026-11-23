@@ -19,9 +19,9 @@ async function serve(port, route) {
 }
 
 export async function startFakeScram(port = 0) {
-  const app = await serve(0, (path) => (path === "/app" ? page("app") : null));
+  const app = await serve(0, (path) => (path === "/app" || path.startsWith("/app/") ? page("app") : null));
   const site = await serve(port, (path) =>
-    path.startsWith("/editor/") ? page("editor").replace("__APP_URL__", `${app.url}app`) : path === "/" ? page("dashboard") : null
+    path.startsWith("/editor/") ? page("editor").replaceAll("__APP_URL__", `${app.url}app`) : path === "/" ? page("dashboard") : null
   );
   return { url: site.url, appUrl: `${app.url}app`, close: async () => Promise.all([site.close(), app.close()]) };
 }

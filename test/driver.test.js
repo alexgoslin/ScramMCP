@@ -247,6 +247,62 @@ test("tests the running app: reads it, types, chooses, clicks, scrolls (Run mode
   await assert.rejects(driver.readApp(), /isn't in Run mode.*scram_run_mode/);
 });
 
+test("the editor's controls Scram's bot can't use, and real input it can't give", async () => {
+  await driver.setMode("run");
+  const appFrame = () => page.frames().find((f) => f.url().startsWith(site.appUrl));
+
+  // The preview's path box: another page of the app.
+  let s = await driver.setPreview({ path: "/orders" });
+  assert.match(s.did.join(" "), /went to \/orders/);
+  assert.equal(s.path, "/orders");
+  assert.match(await driver.readApp(), /Today's orders/);
+  // The preview size (tablet is 768 px wide: the app sees a little less, inside the frame's border).
+  s = await driver.setPreview({ size: "tablet" });
+  assert.equal(s.size, "tablet");
+  const width = await appFrame().evaluate(() => innerWidth);
+  assert.ok(width > 750 && width <= 768, `tablet width: ${width}`);
+  assert.match(await driver.readApp(), /Today's orders/); // reading still works at that size
+  assert.equal((await driver.setPreview({ size: "desktop" })).size, "desktop");
+  // "This version is outdated": Refresh.
+  await page.evaluate(() => window.makeOutdated());
+  assert.match((await driver.previewState()).notice, /This version is outdated/);
+  assert.equal((await driver.setPreview({ refresh: true })).notice, null);
+  // What covers the editor: the Activity panel, a cookie banner ("Reject all", never "Accept").
+  await page.evaluate(() => (window.openActivity(), window.showConsent()));
+  assert.deepEqual(await driver.closePanels(), ["the Activity panel", "a cookie banner (Reject all)"]);
+  assert.equal(await page.evaluate(() => window.consent), "rejected");
+  // Scram slipping back to Edit mode while its address still says Run: noticed, and fixed.
+  await page.evaluate(() => window.fallBackToEdit());
+  assert.equal(await driver.currentMode(), "edit");
+  await assert.rejects(driver.readApp(), /isn't in Run mode/);
+  await driver.setMode("run", { restart: true });
+  assert.equal(await driver.currentMode(), "run");
+
+  // Real input Scram's bot's own Run tool can't give: leaving a field (an autosave on leaving it),
+  // dragging (painting a range of times), key presses.
+  await driver.setPreview({ path: "/" });
+  assert.match(await driver.typeInApp({ field: "Notes", text: "Ring the bell" }), /then left the field \(Tab\)/);
+  assert.equal(await appFrame().evaluate(() => window.savedNotes), "Ring the bell");
+  const page1 = await driver.readApp({ filter: "all" });
+  const ref = (t) => page1.match(new RegExp(`"${t}" \\[(app_ref_\\d+)\\]`))[1];
+  assert.match(await driver.dragInApp({ fromRef: ref("9:00"), toRef: ref("11:00") }), /Times picked: 9:00, 10:00, 11:00/);
+  assert.deepEqual(await appFrame().evaluate(() => window.painted), ["9:00", "10:00", "11:00"]);
+  await driver.typeInApp({ field: "Name", text: "Bo", leaveField: false });
+  assert.match(await driver.pressKeyInApp("Escape"), /Pressed Escape/);
+  assert.equal(await appFrame().evaluate(() => window.lastKey), "Escape");
+  await assert.rejects(driver.pressKeyInApp("Delete"), /Only these keys/);
+
+  // The chat: cancelling the bot's question form, then a fresh chat, then back to the page view.
+  await driver.sendMessage("Ask me a question first", { waitMs: 60000 });
+  assert.deepEqual(await driver.cancelQuestion(), { cancelled: true, chat_box_found: true });
+  assert.equal((await driver.newChat()).new_chat, true);
+  assert.equal(await page.evaluate(() => window.newChats), 1);
+  assert.equal(await page.evaluate(() => document.getElementById("messages").children.length), 0);
+  const home = await driver.backToPageView();
+  assert.equal(home.chat_box_found, true);
+  assert.equal(home.mode, "run");
+});
+
 test("a long message is typed in full", async () => {
   const long = "Please build this.\n" + Array.from({ length: 80 }, (_, i) => `Requirement ${i + 1}: the page must do thing number ${i + 1}.`).join("\n");
   const r = await driver.sendMessage(long, { waitMs: 60000 });
@@ -299,6 +355,8 @@ test("the autopilot: only with the user's OK; builds step by step; keeps Scram t
   const steps = [
     { title: "Pricing page", request: "Add a pricing page with three tiers." },
     { title: "Scope", request: "Before building more, ask me a question first about the scope." },
+    { title: "Run check", request: "Add a contact form, then the testing question." },
+    { title: "Reviews", request: "Add customer reviews (a forgetful step)." },
     { title: "Payments", request: "Let customers take payments for the Pro tier." },
   ];
   // Not without the person's OK (in Scram Desktop's own window), and not twice.
@@ -311,7 +369,7 @@ test("the autopilot: only with the user's OK; builds step by step; keeps Scram t
   ok = "allow";
   const before = (await sent()).length;
   const started = await pilot.start({ steps });
-  assert.match(started, /The autopilot is building: step 1 of 3/);
+  assert.match(started, /The autopilot is building: step 1 of 5/);
   await assert.rejects(pilot.start({ steps }), /already running/);
   // While it builds, nobody else can act on Scram (looking is fine).
   await new Promise((r) => setTimeout(r, 500));
@@ -322,7 +380,7 @@ test("the autopilot: only with the user's OK; builds step by step; keeps Scram t
   for (let i = 0; i < 240 && pilot.state === "running"; i++) await new Promise((r) => setTimeout(r, 1000));
   const s = pilot.status();
   assert.equal(s.state, "paused", pilot.describe());
-  assert.equal(s.step, 3);
+  assert.equal(s.step, 5);
   assert.match(s.needs_you, /Stripe secret API key/);
   assert.ok(notes.some((n) => /^Autopilot needs you: .*Stripe/.test(n)), JSON.stringify(notes));
   const log = pilot.describe();
@@ -330,19 +388,26 @@ test("the autopilot: only with the user's OK; builds step by step; keeps Scram t
   assert.match(log, /2\. Scope: done/);
   assert.match(log, /Approved the bot's plan/);
   assert.match(log, /Answered the bot's question: “Just start building”/); // not "Help me scope it out"
+  // Never "Open Run and test it for me" (the bot can't): "I'll open Run myself · go ahead when it's up".
+  assert.match(log, /Answered the bot's question: “I'll open Run myself · go ahead when it's up”/);
+  assert.doesNotMatch(log, /Answered the bot's question: “Open Run/);
+  // The bot lost the step (it can't re-open attachments): the whole step pasted again.
+  assert.match(log, /Step 4: the bot lost track of the step: pasting it again/);
+  assert.match(log, /4\. Reviews: done/);
   assert.match(log, /asking the bot to test it in Run mode/);
   assert.match(log, /layout check found no problems/);
   assert.equal(await driver.currentMode(), "run"); // it switched Run mode on for the bot's testing
   const messages = (await sent()).slice(before);
-  assert.match(messages[0], /^Step 1 of 3: Pricing page\s+Add a pricing page with three tiers\./);
+  assert.match(messages[0], /^Step 1 of 5: Pricing page\s+Add a pricing page with three tiers\./);
+  assert.ok(messages.some((m) => /^Here is the whole step again \(you can't re-open the attachment\):\s+Step 4 of 5: Reviews/.test(m)), JSON.stringify(messages));
   assert.ok(messages.some((m) => /^Now test step 1 \(“Pricing page”\)/.test(m)), JSON.stringify(messages));
-  assert.match(messages.at(-1), /^Step 3 of 3: Payments/);
+  assert.match(messages.at(-1), /^Step 5 of 5: Payments/);
 
   // Paused: Scram is free again for the user (or their agent) to sort things out.
   await driver.readChat();
   assert.throws(() => pilot.resume.call({ state: "idle" }));
   // Stopping a paused run.
-  assert.match(await pilot.stop(), /stopped at step 3 of 3/);
+  assert.match(await pilot.stop(), /stopped at step 5 of 5/);
   assert.equal(pilot.state, "stopped");
   await driver.waitForReply({ waitMs: 5000 }); // nothing reserved any more
 });

@@ -51,6 +51,12 @@ server), database tables and fields, the theme. Ask for real, working behaviour 
 database, not placeholder or hardcoded data. If something needs a secret (an API key, a
 payment account), say so in the step, and expect to need the user for it.
 
+## The full method
+
+scram_guide topic "handoff" has the whole method this guide condenses, with templates: Setup
+first, dependency order, a Context Block in every step, scope / out of scope / testing checklist
+/ gate, a manifest, and a final regression step.
+
 ## For big builds: a TypeScript brief
 
 When the build is big (a whole app, or a feature with several tables, pages or integrations),

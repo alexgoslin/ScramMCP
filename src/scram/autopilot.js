@@ -30,6 +30,15 @@ const OUT_OF_CREDITS = /\b(out of credits|no credits (left|remaining)|not enough
 // conversation or stop.
 const PREFER_OPTION = /\b(recommend(ed)?|just start building|start building|go ahead|build it|proceed|continue|yes|sounds good|use (your|the) (best|default|suggested)|keep it simple|default)\b/i;
 const AVOID_OPTION = /\b(scope it out|talk (it )?through|ask me|let me (decide|choose|think)|later|cancel|stop|no|skip)\b/i;
+// From RoboBuild: the bot offering to open Run itself (it can't), or saying the user will / Run is
+// on already (the right answer once Run is on). An offer to fix an error is taken.
+const RUN_ASK_OPTION = /\b(open|switch|turn on|enter|launch|start|go to|use|reopen)\b[^.]{0,20}\brun\b|^\W*run(\s+mode)?\W*$/i;
+const GO_AHEAD_OPTION = /\b(i['’]?ll open (run|it)|i['’]?ve opened run|go ahead when|when it['’]?s (up|on|open|ready)|run is (on|open|up)|it['’]?s (on|open|up) now|already (open|on|running))\b/i;
+const FIX_OPTION = /\b(let (the )?ai (fix|solve)|fix (it|this|the error)|solve (it|this)|try to fix)\b/i;
+// The bot having lost the step (its memory was compressed and it can't re-open attachments).
+const LOST_TRACK =
+  /\b(which (items|parts|ones|things) (are|remain|still|were)|what (are|were) the (remaining|outstanding) (items|tasks)|can['’]?t (find|open|access|load|re-?open) (the )?(attach|step file|file|work order|original)|(lost|don['’]?t have) (the|access to the) (attach|step|file|list)|remind me (what|which))\b/i;
+const RUN_ON = "Run mode is on now (I switched it on: you can't, and don't need to). Please carry on.";
 const DEFAULT_ANSWER = "Please use your best judgement: keep it simple and consistent with the rest of the app and with this step's request, and carry on.";
 
 const tail = (t, n = 2500) => String(t || "").slice(-n);
@@ -198,14 +207,19 @@ export class Autopilot {
     }
   }
 
-  async runMode() {
+  async runMode({ restart = false } = {}) {
     try {
-      if ((await this.driver.currentMode()) !== "run") {
-        await this.driver.setMode("run");
-        this.note("Switched Scram to Run mode (so the bot can test what it builds).");
+      if (restart || (await this.driver.currentMode()) !== "run") {
+        await this.driver.setMode("run", { restart });
+        this.note(restart ? "Restarted Run mode (the bot said the app wasn't running)." : "Switched Scram to Run mode (so the bot can test what it builds).");
+      }
+      // After a rebuild the preview can be an old version: Refresh it.
+      if ((await this.driver.previewState()).notice) {
+        await this.driver.setPreview({ refresh: true });
+        this.note("Refreshed the preview (it was showing an old version).");
       }
     } catch (e) {
-      this.note(`Couldn't switch Scram to Run mode: ${e.message}`);
+      this.note(`Couldn't get the running app showing: ${e.message}`);
     }
   }
 
@@ -246,7 +260,14 @@ export class Autopilot {
         reply = await this.driver.waitForReply({ waitMs: WAIT_MS, signal: r.abort.signal });
       }
       this.checkStop();
-      if (reply.state === "no_reply") throw new Pause("Scram's bot didn't reply. It may be out of credits, or showing an error: check Scram Desktop's window.");
+      if (reply.state === "no_reply") {
+        // It sometimes just stops: nudge it (twice at most) before asking the user.
+        p.nudges = (p.nudges || 0) + 1;
+        if (p.nudges > 2) throw new Pause("Scram's bot didn't reply, even after two nudges. It may be out of credits, or showing an error: check Scram Desktop's window.");
+        this.note("The bot went quiet: nudging it to continue.");
+        reply = await this.send("Please continue where you left off.");
+        continue;
+      }
       if (++p.rounds > this.maxRoundsPerStep) throw new Pause(`Step ${i + 1} (“${s.title}”) has gone ${this.maxRoundsPerStep} rounds with Scram's bot without finishing. Check the chat in Scram Desktop's window, sort it out with the bot, then resume.`);
       const said = tail(reply.reply);
       const broke = said.match(OUT_OF_CREDITS);
@@ -254,11 +275,42 @@ export class Autopilot {
       const need = said.match(NEEDS_YOU);
       if (need) throw new Pause(`Scram's bot needs something only you can give: “${short(said.slice(Math.max(0, need.index - 60), need.index + 200))}”. Sort it out in Scram Desktop's window (e.g. add the key where the bot says), then resume.`);
 
-      // The bot can't switch to Run mode itself: if it asks, or says the app isn't running, switch.
-      if ((ASKS_FOR_RUN.test(said) || SAYS_NOT_RUNNING.test(said)) && (await this.driver.currentMode()) !== "run") {
-        await this.runMode();
-        reply = await this.send("Run mode is on now. Please carry on.");
-        continue;
+      // It lost the step (memory compressed; it can't re-open attachments): paste the step again,
+      // then, if that happens again, start a new chat with the step.
+      if (LOST_TRACK.test(said)) {
+        if (!p.repasted) {
+          p.repasted = true;
+          this.note(`Step ${i + 1}: the bot lost track of the step: pasting it again.`);
+          reply = await this.send(`Here is the whole step again (you can't re-open the attachment):\n\n${this.workOrder(i)}`);
+          continue;
+        }
+        if (!p.newChat) {
+          p.newChat = true;
+          this.note(`Step ${i + 1}: the bot lost track again: starting a new chat with the step.`);
+          await this.driver.newChat();
+          const done = r.steps.slice(0, i).map((x, k) => `Step ${k + 1} (${x.title}): done.`).join(" ");
+          reply = await this.send(`${done ? `Already built: ${done}\n\n` : ""}${this.workOrder(i)}`);
+          continue;
+        }
+        throw new Pause(`Scram's bot keeps losing track of step ${i + 1} (“${s.title}”), even in a new chat. Check the chat in Scram Desktop's window, then resume.`);
+      }
+
+      // The bot can't switch to Run mode itself: if it asks, or says the app isn't running, switch
+      // (or restart Run, if it's on: Scram can silently drop back to Edit mode).
+      if (ASKS_FOR_RUN.test(said) || SAYS_NOT_RUNNING.test(said)) {
+        const off = (await this.driver.currentMode()) !== "run";
+        if (off) await this.runMode();
+        else if (SAYS_NOT_RUNNING.test(said) && (!p.restartedRun || p.rounds - p.restartedRun > 2)) {
+          p.restartedRun = p.rounds;
+          await this.runMode({ restart: true });
+        }
+        // (The bot mentions Run mode in passing a lot: say it's on only when it was off, or now
+        // and then, never every round.)
+        if (reply.state !== "waiting_for_you" && (off || p.rounds - (p.runOnAt ?? -9) > 2)) {
+          p.runOnAt = p.rounds;
+          reply = await this.send(RUN_ON);
+          continue;
+        }
       }
 
       if (reply.state === "waiting_for_you") {
@@ -308,8 +360,21 @@ export class Autopilot {
       r.sent++;
       return this.driver.approvePlan(opts);
     }
-    const options = ((await this.driver.choices()) || []).filter((c) => c.kind === "button" && !/^(cancel|approve( plan)?)$/i.test(c.label));
-    const pick = options.find((c) => PREFER_OPTION.test(c.label)) || options.find((c) => !AVOID_OPTION.test(c.label)) || options[0];
+    const all = ((await this.driver.choices()) || []).filter((c) => c.kind === "button" && !/^(cancel|approve( plan)?)$/i.test(c.label));
+    // Never the bot opening Run itself (it can't); "I'll open Run / go ahead when it's up" once
+    // Run is on; an offer to fix an error; then the "get on with it" answers.
+    const goAhead = all.find((c) => GO_AHEAD_OPTION.test(c.label));
+    if (goAhead) await this.runMode();
+    const options = all.filter((c) => !RUN_ASK_OPTION.test(c.label) || GO_AHEAD_OPTION.test(c.label));
+    if (all.length && !options.length) {
+      // Only "open Run for me" choices: cancel the form, put Run on, and say so.
+      this.note("The bot offered to open Run itself (it can't): cancelled its form and put Run on.");
+      await this.driver.cancelQuestion().catch(() => {});
+      await this.runMode();
+      r.sent++;
+      return this.driver.sendMessage(RUN_ON, opts);
+    }
+    const pick = goAhead || options.find((c) => FIX_OPTION.test(c.label)) || options.find((c) => PREFER_OPTION.test(c.label)) || options.find((c) => !AVOID_OPTION.test(c.label)) || options[0];
     r.sent++;
     if (pick) {
       this.note(`Answered the bot's question: “${short(pick.label, 80)}”.`);

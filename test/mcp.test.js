@@ -49,10 +49,10 @@ test("a current (v2) client lists and calls the tools", async () => {
   const { tools } = await client.listTools();
   const names = tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
-    "scram_answer_question", "scram_app_check_layout", "scram_app_click", "scram_app_read", "scram_app_scroll", "scram_app_type",
+    "scram_answer_question", "scram_app_check_layout", "scram_app_click", "scram_app_drag", "scram_app_key", "scram_app_read", "scram_app_scroll", "scram_app_type",
     "scram_approve_plan", "scram_autopilot_resume", "scram_autopilot_start", "scram_autopilot_status", "scram_autopilot_stop",
-    "scram_brief", "scram_choose", "scram_edit_mode", "scram_guide", "scram_list_projects",
-    "scram_new_project", "scram_open_project", "scram_read_chat", "scram_run_mode", "scram_screenshot",
+    "scram_brief", "scram_choose", "scram_edit_mode", "scram_editor", "scram_guide", "scram_list_projects",
+    "scram_new_project", "scram_open_project", "scram_preview", "scram_read_chat", "scram_run_mode", "scram_screenshot",
     "scram_send_message", "scram_send_theme", "scram_status", "scram_stop_bot", "scram_wait_for_reply",
   ]);
   const res = await client.callTool({ name: "scram_send_message", arguments: { message: "Build a todo app" } });
@@ -72,7 +72,7 @@ test("an older (v1 SDK, 2025 protocol) client works too", async () => {
   const client = new V1Client({ name: "old", version: "1.0.0" });
   await client.connect(new V1Transport(new URL(srv.url), { requestInit: auth }));
   const { tools } = await client.listTools();
-  assert.equal(tools.length, 26);
+  assert.equal(tools.length, 30);
   const res = await client.callTool({ name: "scram_status", arguments: {} });
   assert.match(res.content[0].text, /"place": "editor"/);
   await client.close();
@@ -169,6 +169,9 @@ test("the guides: briefs, themes and UI rules; nothing internal", async () => {
   await client.connect(new StreamableHTTPClientTransport(new URL(srv.url), { requestInit: auth }));
   const read = async (topic) => (await client.callTool({ name: "scram_guide", arguments: { topic } })).content[0].text;
   assert.match(await read("briefs"), /Use a TypeScript brief only when a request is big/);
+  assert.match(await read("driving"), /# Driving Scram's bot well[\s\S]*Table Security/);
+  assert.match(await read("handoff"), /Step 0 is Setup, and only Setup[\s\S]*Final regression/);
+  assert.match(await read("editor"), /# Scram's editor: a map/);
   assert.match(await read("brief_template"), /Scram staged brief — TEMPLATE/);
   assert.match(await read("themes"), /What vibe should the app have\?/);
   assert.match(await read("theme_examples"), /theme-1-scram\.ts[\s\S]*theme-6-clinic\.ts[\s\S]*theme-template\.ts/);

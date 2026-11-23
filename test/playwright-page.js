@@ -45,6 +45,12 @@ export function playwrightPage(page) {
       return result;
     },
     trustedClick: (x, y) => page.mouse.click(x, y),
+    async trustedDrag(from, to) {
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(to.x, to.y, { steps: 12 });
+      await page.mouse.up();
+    },
     trustedKey: (key) => page.keyboard.press(key),
     navigate: async (url) => {
       await page.goto(url);

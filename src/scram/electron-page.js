@@ -90,10 +90,25 @@ export function electronPage(getWin) {
       wc().sendInputEvent({ type: "mouseUp", ...at, button: "left", clickCount: 1 });
     },
 
+    // A real mouse drag: press, move in steps (so the page sees the movement), release.
+    async trustedDrag(from, to) {
+      const z = zoom();
+      const p = (x, y) => ({ x: Math.round(x * z), y: Math.round(y * z) });
+      wc().sendInputEvent({ type: "mouseMove", ...p(from.x, from.y) });
+      wc().sendInputEvent({ type: "mouseDown", ...p(from.x, from.y), button: "left", clickCount: 1 });
+      for (let i = 1; i <= 12; i++) {
+        const at = p(from.x + ((to.x - from.x) * i) / 12, from.y + ((to.y - from.y) * i) / 12);
+        wc().sendInputEvent({ type: "mouseMove", ...at, button: "left", modifiers: ["leftButtonDown"] });
+        await new Promise((r) => setTimeout(r, 16));
+      }
+      wc().sendInputEvent({ type: "mouseUp", ...p(to.x, to.y), button: "left", clickCount: 1 });
+    },
+
     async trustedKey(key) {
       wc().focus();
       wc().sendInputEvent({ type: "keyDown", keyCode: key });
       if (key === "Enter") wc().sendInputEvent({ type: "char", keyCode: "\r" });
+      if (key === "Space") wc().sendInputEvent({ type: "char", keyCode: " " });
       wc().sendInputEvent({ type: "keyUp", keyCode: key });
     },
 

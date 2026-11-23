@@ -34,7 +34,15 @@
   .hidden { display: none !important; }
   #structure { padding: 8px; border-top: 1px solid #ddd; }
   #canvas { position: fixed; left: 350px; top: 50px; right: 10px; bottom: 10px; }
-  #canvas iframe { width: 100%; height: 100%; border: 1px solid #ddd; }
+  #canvas iframe { width: 100%; height: calc(100% - 44px); border: 1px solid #ddd; display: block; margin: 0 auto; }
+  #toolbar { height: 36px; display: flex; gap: 8px; align-items: center; justify-content: flex-end; position: relative; }
+  #path { width: 220px; }
+  #size-menu { position: absolute; right: 0; top: 36px; background: #fff; border: 1px solid #ccc; z-index: 5; display: flex; flex-direction: column; }
+  body:not(.run) .run-only, body.run .edit-only { display: none !important; }
+  #notice { position: absolute; top: 44px; left: 0; right: 0; background: #fff3cd; padding: 6px; z-index: 4; }
+  #activity { position: fixed; top: 50px; right: 10px; width: 55%; bottom: 10px; background: #fff; border: 1px solid #ccc; z-index: 6; padding: 8px; }
+  #consent { position: fixed; left: 0; bottom: 0; width: 360px; background: #222; color: #fff; padding: 12px; z-index: 20; }
+  #chat-title button { width: 24px; height: 24px; padding: 0; }
   .plan-more { display: none; }
   .plan-more.open { display: block; }
   .card { border: 1px solid #ddd; border-radius: 6px; padding: 6px 8px; margin: 6px 0; cursor: pointer; }
@@ -48,7 +56,7 @@
 </div>
 <div id="left">
   <div id="chat">
-    <div id="chat-title">“New chat”</div>
+    <div id="chat-title"><span id="chat-name">“New chat”</span> <button aria-label="Plans">☰</button><button aria-label="New chat">+</button><button aria-label="Chat history">⟲</button><button aria-label="Collapse">^</button></div>
     <div id="messages"></div>
     <div id="composer">
       <div id="box" contenteditable="true" role="textbox" aria-label="Describe the problem you're trying to solve..." data-placeholder="Describe the problem you're trying to solve..."></div>
@@ -58,7 +66,20 @@
   </div>
   <div id="structure"><div>Page Structure</div><div>Home Page</div></div>
 </div>
-<div id="canvas"><iframe title="Running app" src="__APP_URL__"></iframe></div>
+<div id="canvas">
+  <div id="toolbar">
+    <button id="page-picker" class="edit-only" aria-label="Current page: Home Page. Open page list.">Home Page ▾</button>
+    <button id="refresh" class="run-only" aria-label="Refresh">⟳</button>
+    <input id="path" class="run-only" value="/" aria-label="Path">
+    <button id="activity-btn" class="run-only" data-testid="dev-deployment-activity-btn" aria-label="Deployment activity">1</button>
+    <button id="size-btn" aria-label="Preview size, Desktop">▭</button>
+    <div id="size-menu" role="menu" class="hidden"><button role="menuitem" aria-label="Preview size, Desktop">Desktop</button><button role="menuitem" aria-label="Preview size, Tablet">Tablet</button><button role="menuitem" aria-label="Preview size, Mobile">Mobile</button></div>
+  </div>
+  <div id="notice" class="hidden">This version is outdated · Build pending</div>
+  <iframe title="Running app" src="__APP_URL__"></iframe>
+</div>
+<aside id="activity" class="hidden"><div>Activity</div><button id="activity-close" aria-label="Close">✕</button><div>Deploying build 42…</div></aside>
+<div id="consent" class="hidden">We use cookies to improve your experience. <button id="accept-all">Accept all</button> <button id="reject-all">Reject all</button></div>
 
 <script>
   const messages = document.getElementById("messages");
@@ -75,7 +96,54 @@
     const run = new URL(location.href).searchParams.get("preview") === "run";
     runBtn.setAttribute("aria-pressed", String(run));
     editBtn.setAttribute("aria-pressed", String(!run));
+    document.body.classList.toggle("run", run);
   }
+
+  // The Run-mode toolbar, like real Scram's: Refresh, the path box, the Activity badge, and the
+  // preview-size menu (Desktop / Tablet / Mobile, also in the address as breakpoint=…).
+  const APP = "__APP_URL__";
+  const frame = document.querySelector("#canvas iframe");
+  const pathBox = document.getElementById("path");
+  const notice = document.getElementById("notice");
+  const WIDTHS = { desktop: "100%", tablet: "768px", mobile: "375px" };
+  pathBox.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    frame.src = APP + (pathBox.value === "/" ? "" : pathBox.value);
+  });
+  document.getElementById("refresh").addEventListener("click", () => {
+    notice.classList.add("hidden");
+    frame.src = frame.src;
+  });
+  const sizeBtn = document.getElementById("size-btn");
+  const sizeMenu = document.getElementById("size-menu");
+  sizeBtn.addEventListener("click", () => sizeMenu.classList.toggle("hidden"));
+  for (const opt of sizeMenu.querySelectorAll("button")) {
+    opt.addEventListener("click", () => {
+      const size = opt.textContent.toLowerCase();
+      const u = new URL(location.href);
+      u.searchParams.set("breakpoint", size);
+      history.replaceState(null, "", u.href);
+      frame.style.width = WIDTHS[size];
+      sizeBtn.setAttribute("aria-label", `Preview size, ${opt.textContent}`);
+      sizeMenu.classList.add("hidden");
+    });
+  }
+  const activity = document.getElementById("activity");
+  document.getElementById("activity-btn").addEventListener("click", () => activity.classList.remove("hidden"));
+  document.getElementById("activity-close").addEventListener("click", () => activity.classList.add("hidden"));
+  const consent = document.getElementById("consent");
+  document.getElementById("reject-all").addEventListener("click", () => ((window.consent = "rejected"), consent.classList.add("hidden")));
+  document.getElementById("accept-all").addEventListener("click", () => ((window.consent = "accepted"), consent.classList.add("hidden")));
+  // For the tests: things real Scram does by itself.
+  window.makeOutdated = () => notice.classList.remove("hidden");
+  window.openActivity = () => activity.classList.remove("hidden");
+  window.showConsent = () => consent.classList.remove("hidden");
+  window.fallBackToEdit = () => document.body.classList.remove("run"); // the address still says Run
+  window.newChats = 0;
+  document.querySelector('#chat-title [aria-label="New chat"]').addEventListener("click", () => {
+    messages.innerHTML = "";
+    window.newChats++;
+  });
   function setMode(run) {
     const u = new URL(location.href);
     if (run) u.searchParams.set("preview", "run");
@@ -173,7 +241,18 @@
     window.sentMessages.push(text);
     add("user", text);
     box.textContent = "";
-    if (/take payments/i.test(text)) {
+    if (/testing question/i.test(text)) {
+      // Like real Scram after a rebuild: it offers to open Run itself (it can't).
+      await botSays("Built. How should I test it?");
+      ask("How should I test it?", [
+        ["Open Run and test it for me", "I'll switch to Run mode and click through it."],
+        ["I'll open Run myself · go ahead when it's up", "Test as soon as Run is on."],
+      ]);
+    } else if (/forgetful/i.test(text) && !window.forgotOnce) {
+      // Like real Scram after its memory is compressed: it can't re-open the attached step.
+      window.forgotOnce = true;
+      await botSays("Which items are still left? I can't re-open the attachment from earlier.");
+    } else if (/take payments/i.test(text)) {
       await botSays("To take payments I need your Stripe secret API key. Please add it in Settings, then tell me to continue.");
     } else if (/header question/i.test(text)) {
       await botSays("I have a question about the header.");

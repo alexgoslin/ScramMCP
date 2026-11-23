@@ -15,9 +15,12 @@ import { INSTRUCTIONS } from "./instructions.js";
 // Scram know-how for the agent, read on request: from RoboBuild's guides, plus TypeScript briefs,
 // themes and UI rules (src/guides/).
 const GUIDES = {
+  driving: "Driving Scram's bot well: what it can and can't do (and which tool does it instead), handling plans, questions, testing and stalls, Run mode and the preview after rebuilds, its memory, what proof to accept, platform facts that save rounds, and when to involve the user. From real builds.",
   building: "How to build with Scram and its bot: what Scram is, a tour of the editor, getting the best results from the bot, testing, and when an app is done.",
   platform: "What Scram can and can't build (its building blocks, current limits, gotchas, social login).",
   planning: "How to split a build into small, testable steps, and write each as a complete work order (also: writing a plan for scram_autopilot_start).",
+  handoff: "The full handoff method for a big build: Setup first, dependency order, a Context Block in every step, scope / out of scope / testing checklist / gate, a manifest, a final regression; with templates.",
+  editor: "A map of Scram's editor (screens, toolbars, panels, what never to click): for reading screenshots and knowing what the tools do.",
   briefs: "For BIG requests only: writing them as a staged TypeScript brief, sent one batch at a time (scram_brief), and what Scram does that a brief should anticipate.",
   brief_template: "The TypeScript brief template to start a brief from.",
   themes: "Themes: the questions to ask the user first (vibe, boldness, must-haves), Scram's theme rules, the six example themes, and sending one (scram_send_theme).",
@@ -25,7 +28,8 @@ const GUIDES = {
   design: "How to give an app its own distinctive, art-directed design.",
   ui_quality: "UI rules for the screens Scram builds: the quality gate (scope, and evidence before calling a screen finished), craft, and consistency.",
 };
-const asset = (path) => readFileSync(new URL(`../guides/${path}`, import.meta.url), "utf8");
+// (Always with \n line endings: Git on Windows may check the files out with \r\n.)
+const asset = (path) => readFileSync(new URL(`../guides/${path}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const typescriptFiles = (pick) =>
   readdirSync(new URL("../guides/typescript/", import.meta.url))
     .filter(pick)
@@ -177,10 +181,11 @@ export function createScramMcpServer(driver, { version = "0.1.0", activity, auto
     {
       title: "Switch Scram to Run mode",
       description:
-        "Switch Scram's editor to Run mode (the Run button, top right): the running app shows in the middle, and Scram's bot can click through it to test its work. Scram's bot can't switch modes itself.",
+        "Switch Scram's editor to Run mode (the Run button, top right): the running app shows in the middle, and Scram's bot can click through it to test its work. Scram's bot can't switch modes itself: never ask it to. Scram can silently drop back to Edit mode (the bot then says the app isn't running, or its clicks find nothing): call this again. restart: true switches Run off and on again, when the preview is stuck, blank, a placeholder, or on an old version.",
+      inputSchema: z.object({ restart: z.boolean().optional().describe("Switch Run off and on again (default false).") }),
       annotations: { ...acts, idempotentHint: true },
     },
-    guard("scram_run_mode", activity, async () => json(await driver.setMode("run")))
+    guard("scram_run_mode", activity, async ({ restart }) => json(await driver.setMode("run", { restart: !!restart })))
   );
 
   server.registerTool(
@@ -318,11 +323,80 @@ export function createScramMcpServer(driver, { version = "0.1.0", activity, auto
         text: z.string().describe("What to type (or the dropdown option to choose)."),
         clear: z.boolean().optional().describe("Replace what's in the field (default true). false adds to the end."),
         press_enter: z.boolean().optional().describe("Press Enter afterwards, e.g. to submit a search (default false)."),
+        leave_field: z.boolean().optional().describe("Leave the field afterwards (Tab), like a person, so anything saved when you leave a field is saved (default true)."),
       }),
       annotations: acts,
     },
-    guard("scram_app_type", activity, async ({ ref, field, text: value, clear, press_enter }) =>
-      appText(await driver.typeInApp({ ref, field, text: value, clear: clear ?? true, pressEnter: !!press_enter }))
+    guard("scram_app_type", activity, async ({ ref, field, text: value, clear, press_enter, leave_field }) =>
+      appText(await driver.typeInApp({ ref, field, text: value, clear: clear ?? true, pressEnter: !!press_enter, leaveField: leave_field ?? true }))
+    )
+  );
+
+  server.registerTool(
+    "scram_app_drag",
+    {
+      title: "Drag in the running app",
+      description:
+        "Drag with a real mouse in the running app (Run mode): from one element to another, e.g. painting a range of times on a calendar grid, a slider, or reordering a list. Scram's bot's own Run tool can't drag, so do it here, then have the bot check the result (e.g. with SQL). Returns what the app shows afterwards.",
+      inputSchema: z.object({
+        from_ref: appRef,
+        from_text: z.string().optional().describe("Or the text of where to start."),
+        to_ref: appRef,
+        to_text: z.string().optional().describe("Or the text of where to let go."),
+      }),
+      annotations: acts,
+    },
+    guard("scram_app_drag", activity, async ({ from_ref, from_text, to_ref, to_text }) =>
+      appText(await driver.dragInApp({ fromRef: from_ref, fromText: from_text, toRef: to_ref, toText: to_text }))
+    )
+  );
+
+  server.registerTool(
+    "scram_app_key",
+    {
+      title: "Press a key in the running app",
+      description: "Press a key in the running app (Run mode), where its keyboard focus is (click or type in it first): Enter, Tab, Escape, Space, arrows, Home, End, PageUp, PageDown. Returns what the app shows afterwards.",
+      inputSchema: z.object({ key: z.enum(["Enter", "Tab", "Escape", "Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]) }),
+      annotations: acts,
+    },
+    guard("scram_app_key", activity, async ({ key }) => appText(await driver.pressKeyInApp(key)))
+  );
+
+  server.registerTool(
+    "scram_preview",
+    {
+      title: "Control Scram's Run preview",
+      description:
+        'The Run preview\'s own controls, which Scram\'s bot can\'t use (Run mode): go to a page of the app by its path (the path box above the running app, e.g. "/orders?view=list"), change the preview size (desktop, tablet or mobile: for checking a layout at another width, then tell the bot which size is on), and Refresh (after a rebuild, or when it says "This version is outdated"). With nothing set, just says where the preview is. Closes panels covering it first. After a rebuild, the path can lose its query or land on a template path: set it again.',
+      inputSchema: z.object({
+        path: z.string().optional().describe('A path in the app, starting with "/".'),
+        size: z.enum(["desktop", "tablet", "mobile"]).optional(),
+        refresh: z.boolean().optional().describe("Press the preview's Refresh."),
+      }),
+      annotations: acts,
+    },
+    guard("scram_preview", activity, async ({ path, size, refresh }) => json(path || size || refresh ? await driver.setPreview({ path, size, refresh: !!refresh }) : await driver.previewState()))
+  );
+
+  server.registerTool(
+    "scram_editor",
+    {
+      title: "Scram's editor: panels, chat, question forms",
+      description:
+        'Things in Scram\'s editor that Scram\'s bot can\'t do. "back_to_page": get back to the page view with the AI chat (closes panels, leaves workflow canvases, re-opens a collapsed chat). "close_panels": close what covers the editor (Plans, Activity, History, theme panel, warnings/errors dialogs, cookie banners). "cancel_question": cancel the bot\'s question form, e.g. when it offers "Open Run and test it for me" (it can\'t: put Run on yourself, then tell it Run is on). "new_chat": a fresh chat with the bot, when it has lost track (e.g. it can\'t re-open an attached file after its memory was compressed) or keeps going in circles; then send the work again in full.',
+      inputSchema: z.object({ action: z.enum(["back_to_page", "close_panels", "cancel_question", "new_chat"]) }),
+      annotations: acts,
+    },
+    guard("scram_editor", activity, async ({ action }) =>
+      json(
+        action === "back_to_page"
+          ? await driver.backToPageView()
+          : action === "close_panels"
+            ? { closed: await driver.exclusive("closing panels", async () => (await driver.ensureEditor(), driver.closePanels())) }
+            : action === "cancel_question"
+              ? await driver.cancelQuestion()
+              : await driver.newChat()
+      )
     )
   );
 

@@ -175,6 +175,20 @@ test("the Electron app serves MCP and builds through the chat", { skip, timeout:
     assert.match(textOf(await call("scram_app_scroll", { direction: "down" })), /The app now/);
     const risky = await client.callTool({ name: "scram_app_click", arguments: { text: "Today's orders" } });
     assert.match(risky.content[0].text, /Grace Hopper: Carrot/);
+    // The preview's controls and real input Scram's bot can't give: the path box, the size menu,
+    // dragging across times, and leaving a field after typing (an autosave on leaving it).
+    const there = JSON.parse(textOf(await call("scram_preview", { path: "/", size: "tablet" })));
+    assert.equal(there.size, "tablet");
+    assert.equal(there.path, "/");
+    assert.equal(JSON.parse(textOf(await call("scram_preview", { size: "desktop" }))).size, "desktop");
+    assert.match(textOf(await call("scram_app_type", { field: "Notes", text: "Ring the bell" })), /then left the field \(Tab\)/);
+    const slots = textOf(await call("scram_app_read", { filter: "all" }));
+    const slot = (t) => slots.match(new RegExp(`"${t}" \\[(app_ref_\\d+)\\]`))[1];
+    const dragged = textOf(await call("scram_app_drag", { from_ref: slot("9:00"), to_ref: slot("11:00") }));
+    assert.match(dragged, /Notes saved: Ring the bell · Times picked: 9:00, 10:00, 11:00/);
+    assert.match(textOf(await call("scram_editor", { action: "close_panels" })), /"closed"/);
+    assert.equal(JSON.parse(textOf(await call("scram_preview", { path: "/orders" }))).path, "/orders"); // (for the checks below)
+
     // The layout check, and the Scram know-how.
     assert.match(textOf(await call("scram_app_check_layout")), /layout problems/);
     const guide = textOf(await call("scram_guide", { topic: "planning" }));

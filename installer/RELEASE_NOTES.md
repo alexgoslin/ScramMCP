@@ -18,6 +18,13 @@ Windows may say "Windows protected your PC", because the installer isn't code-si
 
 **New in 0.5.0: Claude (or ChatGPT) can test the app it builds.** In Run mode, it reads the app's pages, fills in forms, clicks buttons and links, and checks the result, then tells Scram's bot about anything that doesn't work. Try: *"Using Scram, test the order form and fix anything that doesn't work."* It asks you first before clicking anything that could delete data, cost money or send something for real.
 
+**New in 0.8.0** (the rest of the RoboBuild extension's know-how):
+- **Claude drives Scram's bot the way RoboBuild did**, with the lessons from real builds: what the bot can't do and what to do instead, keeping Run mode on, refreshing after rebuilds, pasting the work again when the bot loses track, and which proof to accept.
+- **New controls Scram's bot can't use itself:** the preview's path box, size (desktop, tablet, mobile) and Refresh; closing panels and cookie banners; cancelling the bot's question forms; a fresh chat. In your app: real dragging, key presses, and leaving a field after typing (so things that save when you leave a field are saved).
+- **Notices when Scram slips back into Edit mode** on its own, and switches Run back on.
+- **The full handoff method** for big builds (Setup first, small steps each with its own context and tests, a final check of everything), with templates.
+- **The autopilot is smarter:** it never lets the bot try to open Run mode itself, refreshes old previews, nudges the bot when it stops, and re-sends the step when the bot loses track.
+
 **New in 0.7.0** (from the RoboBuild extension):
 - **Theme questions.** Before making a theme, Claude asks what vibe you want, how bold, and any must-haves, then makes it with **Scram's real theme rules checked first**: six ready-made themes (Scram, Ledger, Midnight, Atelier, Playground, Clinic), or its own.
 - **Big requests in stages.** For a whole app or a large feature, Claude writes a staged **TypeScript brief**, which Scram Desktop keeps for you (Scram Desktop menu → Show saved briefs), and sends it to Scram's bot one batch at a time. Small requests stay plain messages. The autopilot can build a whole brief.

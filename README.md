@@ -87,8 +87,12 @@ Keep the app open while the agent works. It can be minimised, because Scram's AI
 | `scram_app_click` | Clicks a button, link or checkbox in the running app (a real mouse click), by reference or text, and returns what the app shows afterwards |
 | `scram_app_type` | Types into a field of the running app as a person would (click, replace or add, optionally Enter), or chooses a dropdown option; returns what the app shows afterwards |
 | `scram_app_scroll` | Scrolls the running app up, down, to the top, or to an element |
+| `scram_app_drag` | Drags with a real mouse in the running app (calendar grids, sliders, reordering): Scram's bot's own Run tool can't |
+| `scram_app_key` | Presses a key in the running app (Enter, Tab, Escape, arrows…), only where the app has the focus |
+| `scram_preview` | The Run preview's controls, which Scram's bot can't use: go to a page by its path, change the size (desktop / tablet / mobile), Refresh |
+| `scram_editor` | The editor around the chat: back to the page view, close panels (and cookie banners), cancel the bot's question form, start a new chat |
 | `scram_app_check_layout` | An automatic check of the page the running app shows: menus off screen, things shown twice, overlapping or cut-off text, broken images, hard-to-read text, sideways scrolling (RoboBuild's layout check) |
-| `scram_guide` | Scram know-how for the agent: building with Scram and its bot, what Scram can and can't do, planning a build in steps, TypeScript briefs (and their template), themes (the questions to ask, the rules, six examples), design, and UI quality rules |
+| `scram_guide` | Scram know-how for the agent: driving Scram's bot well (from real builds), building with Scram and its bot, the handoff method for big builds, a map of Scram's editor, what Scram can and can't do, planning a build in steps, TypeScript briefs (and their template), themes (the questions to ask, the rules, six examples), design, and UI quality rules |
 | `scram_send_theme` | Makes (or updates) a theme and applies it: one of six example themes, or the agent's own, checked against Scram's theme rules first, then sent as a TypeScript document: the exact `manageThemes` call |
 | `scram_brief` | **Big requests only:** keeps a staged TypeScript brief in Scram Desktop (save / read / list) and sends it one batch at a time (`send_batch`), each with the brief's conventions |
 | `scram_autopilot_start` | **Only when the user asks:** builds a whole plan of steps by itself, in the background (sends each step, approves plans, answers questions, has the bot test in Run mode, runs the layout check, pauses when it needs the user). Scram Desktop asks the user to confirm first |

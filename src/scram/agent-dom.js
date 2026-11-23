@@ -1746,3 +1746,109 @@
   }
   dom.auditLayout = auditLayout;
 })();
+
+// ---------------------------------------------------------------- the editor's Run-mode controls
+// (Scram Desktop.) From RoboBuild's map of Scram's editor (prompts/scram-ui-guide.md): in Run
+// mode the canvas toolbar above the running app has Refresh · Change favicon · a path box (the
+// running app's address, e.g. "/orders") · an external preview link · Preview size · Edit/Run.
+// A number badge opens the dev-deployment Activity panel. The preview may say "This version is
+// outdated" / "Build pending" after a rebuild. Cookie banners can cover the editor.
+(() => {
+  const dom = window.__sabDom;
+  if (!dom || dom.previewToolbar) return;
+  let next = 1;
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const cs = getComputedStyle(el);
+    return cs.visibility !== "hidden" && cs.display !== "none" && parseFloat(cs.opacity) > 0.05;
+  };
+  const labelOf = (el) => (el.getAttribute("aria-label") || el.getAttribute("title") || el.innerText || el.value || "").replace(/\s+/g, " ").trim();
+  const mark = (el) => {
+    if (!el.dataset.sabId) el.dataset.sabId = `ed${next++}`;
+    return { id: el.dataset.sabId, label: labelOf(el).slice(0, 80) };
+  };
+
+  // The controls in the strip just above the running app (Run mode only).
+  dom.previewToolbar = () => {
+    const pf = dom.previewFrame();
+    if (!pf) return null;
+    const top = pf.full.y;
+    const inStrip = (el) => {
+      const r = el.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      return r.bottom <= top + 6 && r.top >= top - 140 && cx >= pf.full.x - 60 && cx <= pf.full.x + pf.full.w + 60;
+    };
+    const els = [...document.querySelectorAll("button,[role=button],input,a,[aria-label]")].filter((el) => visible(el) && inStrip(el));
+    const refresh = els.find((el) => /^(refresh|reload)( (the )?preview)?$/i.test(labelOf(el)));
+    const path = els.find((el) => el.tagName === "INPUT" && /^\//.test(el.value || el.getAttribute("placeholder") || ""));
+    const size = [...document.querySelectorAll("button,[role=button],[aria-label]")].find((el) => visible(el) && /^preview size/i.test(labelOf(el)));
+    return {
+      refresh: refresh ? mark(refresh) : null,
+      path: path ? { ...mark(path), value: path.value } : null,
+      size: size ? { ...mark(size), now: (labelOf(size).match(/(desktop|tablet|mobile)/i) || [])[1]?.toLowerCase() || null } : null,
+    };
+  };
+
+  // "This version is outdated", "Build pending"… shown over or in the preview.
+  dom.previewNotice = () => {
+    const pf = dom.previewFrame();
+    const re = /this version is outdated|build pending|building (the )?(app|preview)|new version (is )?available|deploying/i;
+    let best = null;
+    for (const el of document.querySelectorAll("div,span,p,button,[role=status],[role=alert]")) {
+      if (!visible(el)) continue;
+      const t = (el.innerText || "").replace(/\s+/g, " ").trim();
+      if (!t || t.length > 160 || !re.test(t)) continue;
+      const r = el.getBoundingClientRect();
+      if (pf && (r.right < pf.full.x - 80 || r.left > pf.full.x + pf.full.w + 80)) continue; // not near the preview
+      if (!best || t.length < best.length) best = t; // the notice itself, not a box around it
+    }
+    return best;
+  };
+
+  // A different value for each page load (to tell when the running app has loaded a new page).
+  const LOAD_ID = Math.random().toString(36).slice(2);
+  dom.loadId = () => LOAD_ID;
+
+  // The dev-deployment Activity panel's close button, if it's open.
+  dom.activityPanelClose = () => {
+    for (const el of document.querySelectorAll("aside,section,[role=dialog],div")) {
+      if (!visible(el)) continue;
+      const head = (el.firstElementChild?.innerText || "").trim();
+      if (!/^activity\b/i.test(head)) continue;
+      const x = [...el.querySelectorAll("button,[role=button],[aria-label]")].find((b) => visible(b) && /^(close|close activity|[✕×x])$/i.test(labelOf(b)));
+      if (x) return mark(x);
+    }
+    return null;
+  };
+
+  // A cookie / consent banner's "Reject all" (never "Accept"), if one is covering the page.
+  dom.consentReject = () => {
+    for (const b of document.querySelectorAll("button,[role=button],a")) {
+      if (!visible(b) || !/^reject( all)?$/i.test(labelOf(b))) continue;
+      let box = b;
+      for (let i = 0; i < 6 && box.parentElement; i++) box = box.parentElement;
+      if (/cookie|consent|privacy|tracking/i.test(box.innerText || "")) return mark(b);
+    }
+    return null;
+  };
+
+  // The Edit-mode page picker ("Current page: … Open page list.") in the canvas toolbar: shown
+  // when the canvas is (back) in Edit mode, even if the address still says Run.
+  dom.editPagePickerShown = () => {
+    const pf = dom.previewFrame();
+    return [...document.querySelectorAll("button,[role=button],[aria-label]")].some((el) => {
+      if (!visible(el) || !/^current page:/i.test(el.getAttribute("aria-label") || el.innerText || "")) return false;
+      if (!pf) return true;
+      const r = el.getBoundingClientRect(); // in the canvas toolbar, just above the canvas
+      return r.bottom <= pf.full.y + 6 && r.top >= pf.full.y - 140;
+    });
+  };
+
+  // Where the keyboard focus is: inside the Run preview's frame (the running app) or not.
+  dom.focusInPreview = () => {
+    const pf = dom.previewFrame();
+    const a = document.activeElement;
+    return !!(a && a.tagName === "IFRAME" && pf && Math.abs(a.getBoundingClientRect().left - pf.full.x) < 2);
+  };
+})();

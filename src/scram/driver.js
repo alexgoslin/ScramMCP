@@ -602,10 +602,11 @@ export class ScramDriver {
   // Run mode shows the running app in the middle of the editor (and lets Scram's bot test it);
   // Edit mode shows the canvas for editing. In Scram's address, Run mode is "preview=run".
   async currentMode() {
-    if (/[?&]preview=run\b/.test(this.page.url())) return "run";
-    const t = await this.try("modeToggle");
-    if (t?.active === true) return "run";
-    return "edit";
+    let run = /[?&]preview=run\b/.test(this.page.url()) || (await this.try("modeToggle"))?.active === true;
+    // Scram can silently fall back to Edit mode while the address still says Run (lesson from
+    // real builds): the canvas toolbar then shows the page picker instead of the path box.
+    if (run && (await this.try("editPagePickerShown"))) run = false;
+    return run ? "run" : "edit";
   }
 
   // The Edit / Run buttons (top right of the page view), getting them on screen if a panel or a
@@ -637,11 +638,19 @@ export class ScramDriver {
     return visible();
   }
 
-  async setMode(mode) {
+  async setMode(mode, { restart = false } = {}) {
     if (mode !== "run" && mode !== "edit") throw new ScramError('Mode must be "run" or "edit".');
     const name = mode === "run" ? "Run" : "Edit";
     return this.exclusive(`switching Scram to ${name} mode`, async () => {
       await this.ensureEditor();
+      // Restart: Run off and on again (the preview stuck, blank, a placeholder, or an old version).
+      if (restart && mode === "run") {
+        const t = await this.findModeToggle();
+        if (t?.editId) {
+          await this.click({ id: t.editId });
+          await this.waitFor(async () => (await this.currentMode()) === "edit", 6000);
+        }
+      }
       if ((await this.currentMode()) === mode) return { mode, changed: false, note: `Scram was already in ${name} mode.` };
       let how = "";
       const t = await this.findModeToggle();
@@ -821,6 +830,9 @@ export class ScramDriver {
       if (!pf) await sleep(500);
     }
     if (!pf) throw new ScramError("Scram is in Run mode, but the running app isn't on screen. Check with scram_screenshot.");
+    if (/^about:(srcdoc|blank)/.test(pf.src || "") && !(await this.page.frames()).some((f) => /^https?:/.test(f.url))) {
+      throw new ScramError("Scram's preview is showing a placeholder, not the running app. Restart Run mode (scram_run_mode with restart: true), then try again.");
+    }
     if (pf.covered >= 0.5) {
       throw new ScramError(`Something in Scram is covering the running app${pf.coverLabel ? ` (“${pf.coverLabel}”)` : ""}. Check with scram_screenshot.`);
     }
@@ -956,7 +968,7 @@ export class ScramDriver {
 
   // Types into a text field the way a person would: clicks it, selects what's there (unless
   // adding to it), types. A dropdown gets the option with that text instead.
-  async typeInApp({ ref, field, text = "", clear = true, pressEnter = false } = {}) {
+  async typeInApp({ ref, field, text = "", clear = true, pressEnter = false, leaveField = true } = {}) {
     return this.exclusive("typing in the running app", async () => {
       const frame = await this.appFrame();
       const found = await this.appTarget(frame, { ref, text: field });
@@ -1002,10 +1014,14 @@ export class ScramDriver {
         const submit = await this.appDom(frame, "submitLabelFor", r);
         if (submit && RISKY_IN_APP.test(submit)) await this.approveInApp(`press Enter in “${name}”, which submits “${submit}” in your app`, submit);
         await this.page.trustedKey("Enter");
+      } else if (leaveField && before.tag !== "editable") {
+        // Leave the field the way a person does (Tab), so "save when you leave the field" fires:
+        // Scram's bot's own Run tool never does (lesson from real builds).
+        await this.page.trustedKey("Tab");
       }
       const shown = before.type === "password" ? `${text.length} characters` : `“${text.length > 80 ? `${text.slice(0, 80)}…` : text}”`;
       this.log(`Typed into “${name}” in the running app.`);
-      return this.appAfter(`${how === "typed" ? "Typed" : "Filled in"} ${shown} ${clear ? "into" : "at the end of"} “${name}”${pressEnter ? ", then pressed Enter" : ""}.`);
+      return this.appAfter(`${how === "typed" ? "Typed" : "Filled in"} ${shown} ${clear ? "into" : "at the end of"} “${name}”${pressEnter ? ", then pressed Enter" : leaveField && before.tag !== "editable" ? ", then left the field (Tab)" : ""}.`);
     });
   }
 
@@ -1019,12 +1035,235 @@ export class ScramDriver {
     });
   }
 
+  // ------------------------------------------------------------------ the editor around the chat
+  // From RoboBuild's pilot (lib/scram-pilot.js) and its map of Scram's editor: things Scram's bot
+  // can't do itself (it can only build, and test in Run mode).
+
+  // Close what covers the editor: the Plans panel, the Run-mode Activity panel, History, the theme
+  // panel, Warnings/Errors dialogs, and cookie banners ("Reject all", never "Accept").
+  async closePanels() {
+    const closed = [];
+    const hit = async (target, what) => {
+      await this.click(target);
+      await sleep(800);
+      closed.push(what);
+    };
+    const plans = await this.try("panelCloseTarget", "^plans$");
+    if (plans) await hit(plans, "the Plans panel");
+    const activity = (await this.try("activityPanelClose")) || (await this.try("panelCloseTarget", "^activity$"));
+    if (activity) await hit(activity, "the Activity panel");
+    const snap = await this.try("snapshot", { maxElements: 300, maxText: 3000, pointer: true });
+    for (const e of snap?.elements || []) if (/^(close history|close theme panel)$/i.test((e.label || "").trim())) await hit(e, e.label.trim());
+    for (const l of snap?.layers || []) {
+      if (!/^(warnings|errors)\b/i.test(l.text || "")) continue;
+      const warn = /^warnings/i.test(l.text);
+      const btn = snap.elements.find((e) => (e.label || "").toLowerCase() === (warn ? "warnings-button" : "errors-button"));
+      if (btn) await hit(btn, `the ${warn ? "Warnings" : "Errors"} dialog`); // (they close with their own button, not Escape)
+    }
+    const consent = await this.try("consentReject");
+    if (consent) await hit(consent, "a cookie banner (Reject all)");
+    if (closed.length) this.log(`Closed ${closed.join(", ")}.`);
+    return closed;
+  }
+
+  // On the frontend's settings (Configure Frontend) instead of a page: open the page list and pick a page.
+  async goToPage() {
+    if (/\/page\//.test(this.page.url())) return true;
+    const snap = await this.try("snapshot", { maxElements: 250, maxText: 0 });
+    const picker = snap?.elements.find((e) => /^current page:/i.test(e.label || ""));
+    if (!picker) return false;
+    await this.click(picker);
+    await sleep(900);
+    const page = ((await this.try("findText", "^\\S.{0,60}\\s/\\S*$", { maxLen: 70 })) || []).find((d) => !/^current page/i.test(d.text || ""));
+    if (!page) {
+      await this.try("pressKey", "Escape");
+      return false;
+    }
+    await this.click(page);
+    await sleep(2000);
+    return /\/page\//.test(this.page.url());
+  }
+
+  // Back to the page view with the AI chat (and the canvas): closes panels, leaves sub-views
+  // (workflow canvases: "‹ Back"), re-opens a collapsed chat, picks a page if on the frontend's settings.
+  async backToPageView() {
+    return this.exclusive("getting back to Scram's page view", async () => {
+      await this.ensureEditor();
+      const closed = await this.closePanels();
+      await this.revealChat();
+      if (!/\/page\//.test(this.page.url())) await this.goToPage();
+      await this.try("scrollChatToBottom");
+      return { chat_box_found: !!(await this.try("findChatInput")), on_a_page: /\/page\//.test(this.page.url()), mode: await this.currentMode(), closed };
+    });
+  }
+
+  // A fresh chat (the + in the chat's title row): when the bot has lost track (e.g. it can't
+  // re-open an attached file after its context was compressed) or keeps going in circles. Send
+  // the work again afterwards: the new chat starts empty.
+  async newChat() {
+    return this.exclusive("starting a new chat with Scram's bot", async () => {
+      await this.ensureEditor();
+      if (await this.working()) throw new ScramError("Scram's bot is still working: stop it first (scram_stop_bot) or wait for it.");
+      await this.revealChat();
+      const plus = await this.try("newChatTarget");
+      if (!plus) throw new ScramError("Couldn't find the + (new chat) in the chat's title row. Check with scram_screenshot.");
+      const before = ((await this.try("chatReadable"))?.text || "").length;
+      await this.click(plus);
+      const fresh = await this.waitFor(async () => ((await this.try("chatReadable"))?.text || "").length < Math.max(200, before / 2), 10000);
+      if (!fresh) throw new ScramError("Clicked the + (new chat), but the chat doesn't look new. Check with scram_screenshot.");
+      this.baseline = (await this.try("chatReadable"))?.text || "";
+      this.sent = "";
+      this.log("Started a new chat with Scram's bot.");
+      return { new_chat: true, note: "The new chat is empty: send the work again (the step or batch in full), with a line on what's already built." };
+    });
+  }
+
+  // Cancel the bot's question form (so you can write your own instructions in the chat box), e.g.
+  // when it offers "Open Run and test it for me", which it can't do itself.
+  async cancelQuestion() {
+    return this.exclusive("cancelling the bot's question", async () => {
+      await this.ensureEditor();
+      const c = (await this.choices()).find((x) => x.kind === "button" && /^cancel$/i.test(x.label));
+      if (!c) throw new ScramError("Scram's bot isn't showing a question form with a Cancel button.");
+      await this.click(c);
+      await this.waitFor(async () => !!(await this.try("findChatInput")), 5000);
+      this.log("Cancelled the bot's question form.");
+      return { cancelled: true, chat_box_found: !!(await this.try("findChatInput")) };
+    });
+  }
+
+  // The Run preview: its address (path box), size, and any notice ("This version is outdated").
+  async previewState() {
+    const bar = await this.try("previewToolbar");
+    const m = this.page.url().match(/[?&]breakpoint=(\w+)/i);
+    return {
+      mode: await this.currentMode(),
+      path: bar?.path?.value ?? null,
+      size: (m && m[1].toLowerCase()) || bar?.size?.now || null,
+      notice: await this.try("previewNotice"),
+    };
+  }
+
+  // The Run preview's controls, which Scram's bot can't use: the size (desktop, tablet, mobile),
+  // the path box (go to a page of the app, e.g. "/orders?view=list"), Refresh.
+  async setPreview({ path, refresh = false, size } = {}) {
+    return this.exclusive("changing Scram's Run preview", async () => {
+      await this.ensureEditor();
+      if ((await this.currentMode()) !== "run") throw new ScramError("Scram isn't in Run mode: call scram_run_mode first.");
+      const did = [...(await this.closePanels()).map((c) => `closed ${c}`)];
+      if (size) did.push(await this.choosePreviewSize(size));
+      if (path) {
+        if (!/^\//.test(path)) throw new ScramError('The path must start with "/", e.g. "/orders".');
+        const bar = await this.try("previewToolbar");
+        if (!bar?.path) throw new ScramError("Couldn't find the path box above the running app. Check with scram_screenshot.");
+        const before = await this.appLoad();
+        await this.click(bar.path);
+        await sleep(200);
+        await this.page.selectAll();
+        await this.page.insertText(path);
+        await this.page.trustedKey("Enter");
+        const now = await this.appLoaded(before);
+        did.push(now ? `went to ${path} (the app shows ${now.url})` : `typed ${path} into the path box, but the running app didn't change page`);
+      }
+      if (refresh) {
+        const bar = await this.try("previewToolbar");
+        if (!bar?.refresh) throw new ScramError("Couldn't find the Refresh button above the running app. Check with scram_screenshot.");
+        const before = await this.appLoad();
+        await this.click(bar.refresh);
+        did.push((await this.appLoaded(before)) ? "refreshed the preview" : "pressed Refresh, but the running app didn't reload (yet)");
+      }
+      this.log(`Run preview: ${did.join("; ") || "nothing to change"}.`);
+      return { ...(await this.previewState()), did };
+    });
+  }
+
+  // Which page load the running app is on ({ url, id }), or null if it can't be reached.
+  async appLoad() {
+    try {
+      const frame = await this.appFrame();
+      return { url: (await this.appDom(frame, "viewport")).url, id: await this.appDom(frame, "loadId") };
+    } catch {
+      return null;
+    }
+  }
+
+  // Waits for the running app to show a new page (loaded, or another address), then to settle.
+  async appLoaded(before, ms = 15000) {
+    let now = null;
+    const changed = await this.waitFor(async () => {
+      now = await this.appLoad();
+      return !!now && (!before || now.id !== before.id || now.url !== before.url);
+    }, ms);
+    if (!changed) return null;
+    try {
+      await this.appDom(await this.appFrame(), "settle", 400, 3000);
+    } catch {
+      /* settled enough */
+    }
+    return now;
+  }
+
+  // Scram's preview-size menu (the device icon next to Edit/Run). (RoboBuild's setPreviewSize.)
+  async choosePreviewSize(size) {
+    size = String(size).toLowerCase();
+    const NAMES = { desktop: "Desktop", tablet: "Tablet", mobile: "Mobile" };
+    if (!NAMES[size]) throw new ScramError('The size must be "desktop", "tablet" or "mobile".');
+    if ((await this.previewState()).size === size) return `the preview was already ${NAMES[size]}`;
+    const bar = await this.try("previewToolbar");
+    if (bar?.size) {
+      await this.click(bar.size);
+      await sleep(900);
+    }
+    const snap = await this.try("snapshot", { maxElements: 250, maxText: 0 });
+    const opt =
+      snap?.elements.find((e) => (e.inLayer || /menuitem|option|radio/.test(e.role || "")) && new RegExp(`(^|preview size,?\\s*)${size}$`, "i").test((e.label || "").trim())) ||
+      ((await this.try("findText", `^${NAMES[size]}$`, { maxLen: 12 })) || []).filter((d) => !d.editable).at(-1);
+    if (!opt) {
+      await this.try("pressKey", "Escape");
+      throw new ScramError(`Couldn't find Scram's preview-size option “${NAMES[size]}”. Check with scram_screenshot.`);
+    }
+    await this.click(opt);
+    await sleep(1500);
+    await this.try("pressKey", "Escape");
+    const now = (await this.previewState()).size;
+    if (now && now !== size) throw new ScramError(`Tried to switch Scram's preview to ${NAMES[size]}, but it still shows ${now}.`);
+    return `switched the preview to ${NAMES[size]}`;
+  }
+
   static describeLayout(audit) {
     if (!audit.issues.length) return `No layout problems found automatically on this page (${audit.url}, ${audit.viewport.w}×${audit.viewport.h}).`;
     return [
       `${audit.issues.length} possible layout problem(s) on this page (${audit.url}, ${audit.viewport.w}×${audit.viewport.h}). Check each against a screenshot (scram_screenshot, area "app_preview"): some can be false alarms.`,
       ...audit.issues.map((i) => `- [${i.kind}] ${i.detail}`),
     ].join("\n");
+  }
+
+  // Drag from one element of the running app to another (or by an offset): real mouse down, move
+  // and up. Scram's bot's own Run tool can't drag (grids, sliders, reordering, painting a range).
+  async dragInApp({ fromRef, fromText, toRef, toText } = {}) {
+    return this.exclusive("dragging in the running app", async () => {
+      const frame = await this.appFrame();
+      const a = await this.appTarget(frame, { ref: fromRef, text: fromText });
+      const from = await this.appPoint(frame, a.target, a.ref);
+      const b = await this.appTarget(frame, { ref: toRef, text: toText });
+      const to = await this.appPoint(frame, b.target, b.ref);
+      await this.page.trustedDrag(from, to);
+      this.log(`Dragged from “${a.target.label || a.ref}” to “${b.target.label || b.ref}” in the running app.`);
+      return this.appAfter(`Dragged from “${a.target.label || a.ref}” to “${b.target.label || b.ref}”.`);
+    });
+  }
+
+  // A key press in the running app, where its keyboard focus is (after clicking or typing in it).
+  async pressKeyInApp(key) {
+    const KEYS = ["Enter", "Tab", "Escape", "Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"];
+    if (!KEYS.includes(key)) throw new ScramError(`Only these keys: ${KEYS.join(", ")}.`);
+    return this.exclusive("pressing a key in the running app", async () => {
+      await this.appFrame();
+      // Only into the running app: never into Scram's editor, where keys can delete things.
+      if (!(await this.try("focusInPreview"))) throw new ScramError("Nothing in the running app has the keyboard focus: click or type in it first (scram_app_click / scram_app_type).");
+      await this.page.trustedKey(key);
+      return this.appAfter(`Pressed ${key}.`);
+    });
   }
 
   async scrollApp({ direction = "down", ref } = {}) {

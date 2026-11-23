@@ -1,2 +1,6 @@
 # Windows scripts keep their CRLF line endings exactly as committed (also in GitHub ZIP downloads).
 *.cmd -text
+# Guides, templates and themes are sent to Scram as text: keep them with \n line endings on every system.
+src/guides/** text eol=lf
+*.md text eol=lf
+*.ts text eol=lf
