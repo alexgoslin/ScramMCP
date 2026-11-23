@@ -1,7 +1,7 @@
 // Scram Desktop: a desktop window showing Scram, plus a local MCP server that lets an AI agent on
 // this computer (Claude Code, Cursor…) work in it through Scram's own AI chat.
 
-import { app, BrowserWindow, Menu, clipboard, dialog, powerSaveBlocker, shell, session } from "electron";
+import { app, BrowserWindow, Menu, Notification, clipboard, dialog, powerSaveBlocker, shell, session } from "electron";
 import { appendFileSync, cpSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig, connectInfo, newToken } from "./config.js";
@@ -29,6 +29,7 @@ import {
 } from "./connect-chatgpt-app.js";
 import { connectorEntry, connectorNotePlaces, waitForConnector } from "./connector-link.js";
 import { ScramDriver } from "./scram/driver.js";
+import { Autopilot } from "./scram/autopilot.js";
 import { electronPage } from "./scram/electron-page.js";
 import { scramUrls } from "./scram/urls.js";
 import { startMcpHttp } from "./mcp/http.js";
@@ -75,6 +76,7 @@ const urls = scramUrls();
 let win = null;
 let mcp = null;
 let busy = 0;
+let autopilot = null;
 let pageTitle = "Scram";
 let config, saveConfig;
 
@@ -103,7 +105,86 @@ function stayAwake(on) {
 function updateTitle() {
   if (!win || win.isDestroyed()) return;
   const server = mcp ? `MCP on :${mcp.port}` : "MCP off";
-  win.setTitle(`${busy ? "● Agent working — " : ""}${pageTitle} — ${APP_NAME} (${server})`);
+  const s = autopilot?.status();
+  const pilot =
+    s?.state === "running" ? `● Autopilot: step ${s.step} of ${s.steps} — ` : s?.state === "paused" ? `⏸ Autopilot paused: needs you — ` : busy ? "● Agent working — " : "";
+  win.setTitle(`${pilot}${pageTitle} — ${APP_NAME} (${server})`);
+}
+
+// Brings Scram Desktop's window to the front (it's usually behind the AI app) to ask something.
+function toFront() {
+  if (!win || win.isDestroyed()) return false;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  if (process.platform === "darwin") app.focus({ steal: true });
+  win.flashFrame(true);
+  return true;
+}
+
+// Before the autopilot starts: the person confirms, in Scram Desktop's own window (the agent
+// can't answer it). No answer within 45 seconds counts as no. (SCRAM_MCP_TEST_APPROVALS=allow|deny
+// answers at once, for the tests.)
+async function askToStartAutopilot({ steps, projectName, test, checkLayout }) {
+  const testAnswer = process.env.SCRAM_MCP_TEST_APPROVALS;
+  if (testAnswer) return testAnswer === "allow" ? "allow" : "deny";
+  if (!toFront()) return "deny";
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), 45000);
+  try {
+    const list = steps.slice(0, 10).map((s, i) => `${i + 1}. ${s.title}`);
+    if (steps.length > 10) list.push(`…and ${steps.length - 10} more`);
+    const { response } = await dialog.showMessageBox(win, {
+      type: "question",
+      message: "Start the autopilot?",
+      detail: [
+        `The AI wants Scram Desktop to build this by itself, ${projectName ? `in a new project “${projectName}”` : "in the project that's open"}:`,
+        ...list,
+        "",
+        `It sends each step to Scram's bot, approves its plans and answers its questions${test ? ", has it test each step in Run mode" : ""}${checkLayout ? ", checks the layout" : ""}, and pauses if it needs you. It uses your Scram credits. You can stop it any time: Scram Desktop menu → Stop autopilot.`,
+      ].join("\n"),
+      buttons: ["Start autopilot", "Cancel"],
+      defaultId: 1,
+      cancelId: 1,
+      signal: stop.signal,
+    });
+    if (stop.signal.aborted) return "timeout";
+    return response === 0 ? "allow" : "deny";
+  } finally {
+    clearTimeout(timer);
+    if (win && !win.isDestroyed()) win.flashFrame(false);
+  }
+}
+
+function notify(title, body) {
+  log(`${title}: ${body}`);
+  try {
+    if (Notification.isSupported()) new Notification({ title, body }).show();
+  } catch {
+    /* no notifications here */
+  }
+}
+
+async function stopAutopilot() {
+  if (!autopilot || !["running", "paused"].includes(autopilot.state)) {
+    return dialog.showMessageBox(win, { type: "info", message: "The autopilot isn't running." });
+  }
+  const { response } = await dialog.showMessageBox(win, {
+    type: "question",
+    message: "Stop the autopilot?",
+    detail: "What it has already built stays. You can also stop Scram's bot if it's in the middle of something.",
+    buttons: ["Stop the autopilot", "Stop the autopilot and Scram's bot", "Cancel"],
+    defaultId: 0,
+    cancelId: 2,
+  });
+  if (response !== 2) await autopilot.stop({ stopBot: response === 1 });
+}
+
+function resumeAutopilot() {
+  if (autopilot?.state !== "paused") {
+    return dialog.showMessageBox(win, { type: "info", message: autopilot?.state === "running" ? "The autopilot is already running." : "The autopilot isn't paused." });
+  }
+  autopilot.resume();
 }
 
 // Sign-in windows. Scram Desktop's windows have no address bar, so a page that opened a window
@@ -566,6 +647,9 @@ function buildMenu() {
         { label: "Go to Scram dashboard", click: () => win?.loadURL(urls.home) },
         { label: "Show log file", click: () => shell.showItemInFolder(join(app.getPath("userData"), "scram-desktop.log")) },
         { label: "Copy connection details (for the Scram team)", click: copyConnectionDetails },
+        { type: "separator" },
+        { label: "Stop autopilot", click: stopAutopilot },
+        { label: "Resume autopilot", click: resumeAutopilot },
         ...(isMac ? [] : [{ type: "separator" }, { role: "quit" }]),
       ],
     },
@@ -596,12 +680,7 @@ function buildMenu() {
 async function askToAllow({ action }) {
   const test = process.env.SCRAM_MCP_TEST_APPROVALS;
   if (test) return test === "allow" ? "allow" : "deny";
-  if (!win || win.isDestroyed()) return "deny";
-  if (win.isMinimized()) win.restore();
-  win.show();
-  win.focus();
-  if (process.platform === "darwin") app.focus({ steal: true });
-  win.flashFrame(true);
+  if (!toFront()) return "deny";
   const stop = new AbortController();
   const timer = setTimeout(() => stop.abort(), 45000);
   try {
@@ -633,10 +712,11 @@ async function startServer(driver) {
       factory: () =>
         createScramMcpServer(driver, {
           version: app.getVersion(),
+          autopilot,
           activity: (tool, started) => {
             busy = Math.max(0, busy + (started ? 1 : -1));
             if (started) log(`Agent called ${tool}.`);
-            stayAwake(busy > 0);
+            stayAwake(busy > 0 || autopilot?.state === "running");
             updateTitle();
           },
         }),
@@ -674,6 +754,15 @@ app.whenReady().then(async () => {
   buildMenu();
   createWindow();
   const driver = new ScramDriver(electronPage(() => win), { urls, log, approve: askToAllow });
+  autopilot = new Autopilot(driver, {
+    log,
+    confirmStart: askToStartAutopilot,
+    notify,
+    onChange: () => {
+      stayAwake(busy > 0 || autopilot.state === "running");
+      updateTitle();
+    },
+  });
   await startServer(driver);
 
   if (!config.welcomed && mcp && !process.env.SCRAM_MCP_NO_WELCOME) {

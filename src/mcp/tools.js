@@ -1,10 +1,21 @@
 // The MCP tools: what an agent (Claude Code, Cursor…) sees and can call. Each one is a thin
 // wrapper around the Scram driver.
 
+import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
-import { ScramError } from "../scram/driver.js";
+import { Autopilot } from "../scram/autopilot.js";
+import { ScramDriver, ScramError } from "../scram/driver.js";
 import { INSTRUCTIONS } from "./instructions.js";
+
+// Scram know-how for the agent (from RoboBuild's guides, src/guides/*.md), read on request.
+const GUIDES = {
+  building: "How to build with Scram and its bot: what Scram is, a tour of the editor, getting the best results from the bot, testing, and when an app is done.",
+  platform: "What Scram can and can't build (its building blocks, current limits, gotchas, social login).",
+  planning: "How to split a build into small, testable steps, and write each as a complete work order (also: writing a plan for scram_autopilot_start).",
+  design: "How to give an app its own distinctive, art-directed design.",
+};
+const guide = (topic) => readFileSync(new URL(`../guides/${topic}.md`, import.meta.url), "utf8");
 
 
 
@@ -62,7 +73,7 @@ function guard(name, activity, fn) {
   };
 }
 
-export function createScramMcpServer(driver, { version = "0.1.0", activity } = {}) {
+export function createScramMcpServer(driver, { version = "0.1.0", activity, autopilot = new Autopilot(driver) } = {}) {
   const server = new McpServer({ name: "scram", title: "Scram", version }, { instructions: INSTRUCTIONS });
   const readOnly = { readOnlyHint: true, openWorldHint: false };
   const acts = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
@@ -305,6 +316,85 @@ export function createScramMcpServer(driver, { version = "0.1.0", activity } = {
       annotations: { ...readOnly, idempotentHint: false },
     },
     guard("scram_app_scroll", activity, async ({ direction, ref }) => appText(await driver.scrollApp({ direction: direction || "down", ref })))
+  );
+
+  server.registerTool(
+    "scram_app_check_layout",
+    {
+      title: "Check the running app's layout",
+      description:
+        "An automatic check of the page the running app is showing (Run mode) for what a person would notice is wrong: menus or popups off the screen, things shown twice, overlapping or cut-off text, broken images, hard-to-read text, sideways scrolling, a blank page. Some findings can be false alarms: compare with scram_screenshot (area \"app_preview\"). To fix real problems, describe them to Scram's bot.",
+      annotations: readOnly,
+    },
+    guard("scram_app_check_layout", activity, async () => text(ScramDriver.describeLayout(await driver.checkLayout())))
+  );
+
+  server.registerTool(
+    "scram_guide",
+    {
+      title: "Scram know-how",
+      description: `Read how to build well with Scram before building anything substantial. Topics: ${Object.entries(GUIDES)
+        .map(([k, v]) => `"${k}": ${v}`)
+        .join(" ")}`,
+      inputSchema: z.object({ topic: z.enum(Object.keys(GUIDES)).optional().describe('Which guide (default "building").') }),
+      annotations: { ...readOnly, idempotentHint: true },
+    },
+    guard("scram_guide", activity, async ({ topic }) => text(guide(topic || "building")))
+  );
+
+  // The autopilot: a hands-off build of a whole plan. Only when the user asks for it.
+  server.registerTool(
+    "scram_autopilot_start",
+    {
+      title: "Start the autopilot (only if the user asks)",
+      description:
+        "ONLY use this when the user has explicitly asked for the autopilot, or for a hands-off build. Never start it on your own initiative. Scram Desktop builds a whole plan in Scram by itself, in the background: for each step it sends the work order to Scram's bot, approves its plans, answers its questions with sensible defaults, has the bot test the step in Run mode, runs the layout check and sends back problems, then moves on. It pauses when it needs the user (a log-in, a secret or payment the bot asks for, credits running out, a step stuck too long). Before it starts, Scram Desktop asks the user to confirm in its own window. Write the plan first (read scram_guide topic \"planning\"): small steps in build order, each a complete work order. While it runs, the other tools that act on Scram are paused for you; follow it with scram_autopilot_status.",
+      inputSchema: z.object({
+        steps: z
+          .array(z.object({ title: z.string().min(1).describe("A short title, e.g. \"Setup\" or \"Orders list\"."), request: z.string().min(1).describe("The full work order for Scram's bot for this step.") }))
+          .min(1)
+          .max(40)
+          .describe("The plan, in build order."),
+        new_project_name: z.string().optional().describe("Build in a new project with this name. Leave out to build in the project that's open."),
+        test_each_step: z.boolean().optional().describe("Have Scram's bot test each step in Run mode (default true)."),
+        check_layout: z.boolean().optional().describe("Run the layout check after each step and send problems to the bot (default true)."),
+      }),
+      annotations: acts,
+    },
+    guard("scram_autopilot_start", activity, async ({ steps, new_project_name, test_each_step, check_layout }) =>
+      text(await autopilot.start({ steps, projectName: new_project_name || "", test: test_each_step ?? true, checkLayout: check_layout ?? true }))
+    )
+  );
+
+  server.registerTool(
+    "scram_autopilot_status",
+    {
+      title: "Autopilot progress",
+      description: "How the autopilot is getting on: which step it's on, what it's done recently, and whether it's paused because it needs the user.",
+      annotations: readOnly,
+    },
+    guard("scram_autopilot_status", activity, async () => text(autopilot.describe()))
+  );
+
+  server.registerTool(
+    "scram_autopilot_resume",
+    {
+      title: "Resume the autopilot",
+      description: "Carry on a paused autopilot, once what it needed is sorted (e.g. the user has logged in, or added the key the bot asked for).",
+      annotations: acts,
+    },
+    guard("scram_autopilot_resume", activity, async () => text(autopilot.resume()))
+  );
+
+  server.registerTool(
+    "scram_autopilot_stop",
+    {
+      title: "Stop the autopilot",
+      description: "Stop the autopilot (what's already built stays). Optionally stop Scram's bot too, if it's in the middle of something.",
+      inputSchema: z.object({ stop_bot: z.boolean().optional().describe("Also stop Scram's bot mid-build (default false).") }),
+      annotations: acts,
+    },
+    guard("scram_autopilot_stop", activity, async ({ stop_bot }) => text(await autopilot.stop({ stopBot: !!stop_bot })))
   );
 
   server.registerTool(

@@ -175,6 +175,18 @@ test("the Electron app serves MCP and builds through the chat", { skip, timeout:
     assert.match(textOf(await call("scram_app_scroll", { direction: "down" })), /The app now/);
     const risky = await client.callTool({ name: "scram_app_click", arguments: { text: "Today's orders" } });
     assert.match(risky.content[0].text, /Grace Hopper: Carrot/);
+    // The layout check, and the Scram know-how.
+    assert.match(textOf(await call("scram_app_check_layout")), /layout problems/);
+    const guide = textOf(await call("scram_guide", { topic: "planning" }));
+    assert.match(guide, /Planning a build in steps/);
+    assert.match(textOf(await call("scram_guide")), /Using Scram to Build Apps/);
+    // The autopilot only starts once the person confirms in Scram Desktop's own window (the
+    // test answers "Cancel").
+    const pilot = await client.callTool({ name: "scram_autopilot_start", arguments: { steps: [{ title: "Setup", request: "Set up the app." }] } });
+    assert.equal(pilot.isError, true);
+    assert.match(pilot.content[0].text, /chose not to start the autopilot/);
+    assert.match(textOf(await call("scram_autopilot_status")), /isn't running/);
+
     const refused = await client.callTool({ name: "scram_app_click", arguments: { text: "Delete all orders" } });
     assert.equal(refused.isError, true);
     assert.match(refused.content[0].text, /asked the user first, and they said no/); // (the test answers "Don't allow")

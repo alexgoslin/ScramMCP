@@ -18,7 +18,12 @@ Windows may say "Windows protected your PC", because the installer isn't code-si
 
 **New in 0.5.0: Claude (or ChatGPT) can test the app it builds.** In Run mode, it reads the app's pages, fills in forms, clicks buttons and links, and checks the result, then tells Scram's bot about anything that doesn't work. Try: *"Using Scram, test the order form and fix anything that doesn't work."* It asks you first before clicking anything that could delete data, cost money or send something for real.
 
-**0.5.1: safety fixes** (from a review of 0.5.0):
+**New in 0.6.0:**
+- **Scram know-how.** Claude (or ChatGPT) can read Scram guides before building: how to get the best from Scram's bot, what Scram can and can't do, planning a build in steps, and design.
+- **Automatic layout check** of the running app: menus off screen, things shown twice, overlapping or cut-off text, broken images, hard-to-read text, sideways scrolling.
+- **Autopilot, only when you ask for it.** Say *"use the autopilot"*: Claude writes a step-by-step plan, Scram Desktop asks you to confirm, and then it builds the whole plan by itself, testing and checking each step, and pausing (with a notification) when it needs you. Stop it any time from the Scram Desktop menu.
+
+**Safety fixes** (from a review of 0.5.0):
 - **You decide on risky clicks.** Before the AI clicks anything in your app that could delete data, cost money or send something (or a button with only an icon), Scram Desktop asks you in its own window. Only you can click Allow.
 - The bot's answer options like "Remove the old header" can be picked now; publishing and deleting projects still can't.
 - Scram Desktop's entry in Claude's and ChatGPT's settings is now called **scram-desktop**, so it never replaces anything else called "scram". Existing connections are updated by themselves the next time you click Connect.

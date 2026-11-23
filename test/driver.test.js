@@ -5,6 +5,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { ScramDriver } from "../src/scram/driver.js";
+import { Autopilot } from "../src/scram/autopilot.js";
 import { scramUrls } from "../src/scram/urls.js";
 import { startFakeScram } from "./fake-scram/server.js";
 import { playwrightPage } from "./playwright-page.js";
@@ -225,6 +226,21 @@ test("tests the running app: reads it, types, chooses, clicks, scrolls (Run mode
   await assert.rejects(driver.clickApp({ text: "Today's orders" }), /covering the running app/);
   await page.evaluate(() => document.getElementById("cover").remove());
 
+  // The layout check: nothing on the plain app; problems once there are some.
+  assert.equal((await driver.checkLayout()).issues.length, 0);
+  await appFrame().evaluate(() => {
+    const menu = document.createElement("div");
+    menu.id = "bad-menu";
+    menu.setAttribute("role", "menu");
+    menu.textContent = "Account menu";
+    menu.style.cssText = "position:absolute;left:95%;top:10px;width:300px;height:40px";
+    document.body.append(menu);
+  });
+  const problems = ScramDriver.describeLayout(await driver.checkLayout());
+  assert.match(problems, /\[off-screen\] menu “Account menu” goes \d+px past the right edge/);
+  assert.match(problems, /\[sideways-scroll\]/);
+  await appFrame().evaluate(() => document.getElementById("bad-menu").remove());
+
   // A wrong reference, and Edit mode.
   await assert.rejects(driver.clickApp({ ref: "app_ref_99999" }), /isn't on the app's page any more/);
   await driver.setMode("edit");
@@ -273,4 +289,60 @@ test("one action at a time", async () => {
   await assert.rejects(driver.sendMessage("second"), /Busy: already sending a message/);
   await first;
   await driver.stopBot();
+});
+
+test("the autopilot: only with the user's OK; builds step by step; keeps Scram to itself; pauses when it needs the user", { timeout: 300000 }, async () => {
+  await driver.openProject({ name: "Demo Project" });
+  let ok = "deny";
+  const notes = [];
+  const pilot = new Autopilot(driver, { confirmStart: async () => ok, notify: (title, body) => notes.push(`${title}: ${body}`) });
+  const steps = [
+    { title: "Pricing page", request: "Add a pricing page with three tiers." },
+    { title: "Scope", request: "Before building more, ask me a question first about the scope." },
+    { title: "Payments", request: "Let customers take payments for the Pro tier." },
+  ];
+  // Not without the person's OK (in Scram Desktop's own window), and not twice.
+  await assert.rejects(pilot.start({ steps }), /chose not to start the autopilot/);
+  ok = "timeout";
+  await assert.rejects(pilot.start({ steps }), /nobody answered in time/);
+  assert.equal(pilot.state, "idle");
+  await assert.rejects(pilot.start({ steps: [{ title: "x" }] }), /each with a title and a request/);
+
+  ok = "allow";
+  const before = (await sent()).length;
+  const started = await pilot.start({ steps });
+  assert.match(started, /The autopilot is building: step 1 of 3/);
+  await assert.rejects(pilot.start({ steps }), /already running/);
+  // While it builds, nobody else can act on Scram (looking is fine).
+  await new Promise((r) => setTimeout(r, 500));
+  await assert.rejects(driver.sendMessage("Something else"), /The autopilot is building in Scram/);
+  assert.equal((await driver.status()).place, "editor");
+
+  // It runs by itself until it needs the user: the bot asks for a Stripe key in step 3.
+  for (let i = 0; i < 240 && pilot.state === "running"; i++) await new Promise((r) => setTimeout(r, 1000));
+  const s = pilot.status();
+  assert.equal(s.state, "paused", pilot.describe());
+  assert.equal(s.step, 3);
+  assert.match(s.needs_you, /Stripe secret API key/);
+  assert.ok(notes.some((n) => /^Autopilot needs you: .*Stripe/.test(n)), JSON.stringify(notes));
+  const log = pilot.describe();
+  assert.match(log, /1\. Pricing page: done/);
+  assert.match(log, /2\. Scope: done/);
+  assert.match(log, /Approved the bot's plan/);
+  assert.match(log, /Answered the bot's question: “Just start building”/); // not "Help me scope it out"
+  assert.match(log, /asking the bot to test it in Run mode/);
+  assert.match(log, /layout check found no problems/);
+  assert.equal(await driver.currentMode(), "run"); // it switched Run mode on for the bot's testing
+  const messages = (await sent()).slice(before);
+  assert.match(messages[0], /^Step 1 of 3: Pricing page\s+Add a pricing page with three tiers\./);
+  assert.ok(messages.some((m) => /^Now test step 1 \(“Pricing page”\)/.test(m)), JSON.stringify(messages));
+  assert.match(messages.at(-1), /^Step 3 of 3: Payments/);
+
+  // Paused: Scram is free again for the user (or their agent) to sort things out.
+  await driver.readChat();
+  assert.throws(() => pilot.resume.call({ state: "idle" }));
+  // Stopping a paused run.
+  assert.match(await pilot.stop(), /stopped at step 3 of 3/);
+  assert.equal(pilot.state, "stopped");
+  await driver.waitForReply({ waitMs: 5000 }); // nothing reserved any more
 });

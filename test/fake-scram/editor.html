@@ -173,7 +173,9 @@
     window.sentMessages.push(text);
     add("user", text);
     box.textContent = "";
-    if (/header question/i.test(text)) {
+    if (/take payments/i.test(text)) {
+      await botSays("To take payments I need your Stripe secret API key. Please add it in Settings, then tell me to continue.");
+    } else if (/header question/i.test(text)) {
       await botSays("I have a question about the header.");
       ask("What should happen to the old header?", [
         ["Remove the old header", "Take the old header off every page and use the new one."],

@@ -130,6 +130,8 @@ You'll see Claude's messages appear in Scram's AI chat, Scram's bot reply, and t
 - Stop the bot if it's going the wrong way
 - Open your projects, or create new ones
 - Take screenshots to check the result
+- **Check the layout** of the app's pages automatically (menus off screen, overlapping text, broken images…)
+- **Build hands-off with the autopilot, only if you ask for it.** Tell Claude what you want and say *"use the autopilot"*. Claude writes a step-by-step plan, Scram Desktop asks you to confirm, then it builds the whole thing by itself: it sends each step to Scram's bot, approves its plans, answers its questions, has it test each step, and checks the layout. It pauses (with a notification) when it needs you, e.g. for a password or API key. Stop it any time: **Scram Desktop menu → Stop autopilot**.
 - **Test the app it built**, like a person would: in Run mode, it reads the app's pages, fills in forms, clicks buttons and links, and checks what happens. If something doesn't work, it tells Scram's bot what went wrong, then tests again. Try asking: *"Using Scram, test the order form and fix anything that doesn't work."*
 
 ### What Claude won't do

@@ -17,7 +17,11 @@
 //   frameDom(id, method, ...args)        the DOM helper inside that frame
 //   insertText(text), selectAll()        typing, as a person would, where the focus is
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { scramUrls } from "./urls.js";
+
+// Who is calling: lets the autopilot keep Scram to itself while it runs (see reserve()).
+const caller = new AsyncLocalStorage();
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -116,9 +120,23 @@ export class ScramDriver {
     return this.page.dom(method, ...args).catch(() => null);
   }
 
+  // While the autopilot runs, only it may act on Scram (others can still look: status, chat,
+  // screenshots). runAs(who, fn) runs fn as `who`.
+  reserve(who, note) {
+    this.reservedBy = who;
+    this.reservedNote = note;
+  }
+  release(who) {
+    if (this.reservedBy === who) this.reservedBy = this.reservedNote = null;
+  }
+  runAs(who, fn) {
+    return caller.run(who, fn);
+  }
+
   // One action at a time: Scram has one chat, and two agents typing into it at once would mix
   // their messages up.
   async exclusive(what, fn) {
+    if (this.reservedBy && caller.getStore() !== this.reservedBy) throw new ScramError(this.reservedNote || "Scram is busy with something else.");
     if (this.busyWith) throw new ScramError(`Busy: already ${this.busyWith}. Wait for that to finish, then try again.`);
     this.busyWith = what;
     try {
@@ -989,6 +1007,24 @@ export class ScramDriver {
       this.log(`Typed into “${name}” in the running app.`);
       return this.appAfter(`${how === "typed" ? "Typed" : "Filled in"} ${shown} ${clear ? "into" : "at the end of"} “${name}”${pressEnter ? ", then pressed Enter" : ""}.`);
     });
+  }
+
+  // The layout check (agent-dom's auditLayout) on the running app's page: { viewport, url, issues: [{ kind, detail }] }.
+  async checkLayout() {
+    return this.exclusive("checking the running app's layout", async () => {
+      const frame = await this.appFrame();
+      const audit = await this.appDom(frame, "auditLayout");
+      if (!audit) throw new ScramError("The layout check couldn't run in the running app. Check with scram_screenshot (area \"app_preview\").");
+      return audit;
+    });
+  }
+
+  static describeLayout(audit) {
+    if (!audit.issues.length) return `No layout problems found automatically on this page (${audit.url}, ${audit.viewport.w}×${audit.viewport.h}).`;
+    return [
+      `${audit.issues.length} possible layout problem(s) on this page (${audit.url}, ${audit.viewport.w}×${audit.viewport.h}). Check each against a screenshot (scram_screenshot, area "app_preview"): some can be false alarms.`,
+      ...audit.issues.map((i) => `- [${i.kind}] ${i.detail}`),
+    ].join("\n");
   }
 
   async scrollApp({ direction = "down", ref } = {}) {

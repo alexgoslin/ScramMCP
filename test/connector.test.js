@@ -70,7 +70,7 @@ test("run by Scram Desktop's own program (as Node.js): lists the tools, waits ca
   const c = await connect();
   assert.ok(connectorStartedSince([join(dir, CONNECTOR_NOTE)], since), "the connector left its 'started' note next to Scram Desktop's settings");
   const { tools } = await c.listTools();
-  assert.equal(tools.length, 18);
+  assert.equal(tools.length, 24);
   assert.equal(tools.find((t) => t.name === "scram_send_message").inputSchema.properties.wait_seconds.maximum, 50);
   await c.close();
 });
@@ -97,7 +97,7 @@ test("picks up a new token by itself", async () => {
 test("also runs with plain Node.js, and with an older (2025-protocol) client", async () => {
   const c = new V1Client({ name: "older-claude-app", version: "1.0.0" });
   await c.connect(new V1StdioTransport({ command: process.execPath, args: [connector], env: { ...process.env, ...testEnv } }));
-  assert.equal((await c.listTools()).tools.length, 18);
+  assert.equal((await c.listTools()).tools.length, 24);
   assert.match(text(await c.callTool({ name: "scram_status", arguments: {} })), /editor/);
   await c.close();
 });
@@ -119,7 +119,7 @@ test("run by the ChatGPT app: exactly ChatGPT's entry, which leaves ChatGPT's ow
 test("the old path (Claude connections made by Scram Desktop 0.3.x) still works", async () => {
   const entry = connectorEntry({ execPath: electronBin, connectorPath: legacyConnector, installed: true });
   const c = await connect({ command: entry.command, args: entry.args, env: { ...process.env, ...entry.env, ...testEnv } });
-  assert.equal((await c.listTools()).tools.length, 18);
+  assert.equal((await c.listTools()).tools.length, 24);
   assert.match(text(await c.callTool({ name: "scram_status", arguments: {} })), /editor/);
   await c.close();
 });
@@ -128,7 +128,7 @@ test("while Scram Desktop is closed: still lists the tools, and says to open it"
   await srv.close();
   srv = null;
   const c = await connect();
-  assert.equal((await c.listTools()).tools.length, 18);
+  assert.equal((await c.listTools()).tools.length, 24);
   const r = await c.callTool({ name: "scram_status", arguments: {} });
   assert.equal(r.isError, true);
   assert.match(text(r), /Scram Desktop isn't open/);

@@ -87,6 +87,10 @@ Keep the app open while the agent works. It can be minimised, because Scram's AI
 | `scram_app_click` | Clicks a button, link or checkbox in the running app (a real mouse click), by reference or text, and returns what the app shows afterwards |
 | `scram_app_type` | Types into a field of the running app as a person would (click, replace or add, optionally Enter), or chooses a dropdown option; returns what the app shows afterwards |
 | `scram_app_scroll` | Scrolls the running app up, down, to the top, or to an element |
+| `scram_app_check_layout` | An automatic check of the page the running app shows: menus off screen, things shown twice, overlapping or cut-off text, broken images, hard-to-read text, sideways scrolling (RoboBuild's layout check) |
+| `scram_guide` | Scram know-how for the agent, from RoboBuild's guides: building with Scram and its bot, what Scram can and can't do, planning a build in steps, design |
+| `scram_autopilot_start` | **Only when the user asks:** builds a whole plan of steps by itself, in the background (sends each step, approves plans, answers questions, has the bot test in Run mode, runs the layout check, pauses when it needs the user). Scram Desktop asks the user to confirm first |
+| `scram_autopilot_status` / `_resume` / `_stop` | Follow, carry on, or stop the autopilot |
 
 Waiting calls give up after 5 minutes by default (`wait_seconds` changes it). If the bot is still working then, the agent calls `scram_wait_for_reply`.
 
@@ -97,6 +101,7 @@ Waiting calls give up after 5 minutes by default (`wait_seconds` changes it). If
 - **Never clicks** Scram's Publish, delete-project, share, billing or log-out controls, even if asked, including when Scram's bot offers them as an answer. (The bot's design choices, like "Remove the old header", can be picked.) Scram Desktop can't stop an agent *asking* Scram's bot in a message to publish or delete; agents are told never to unless the user asked for exactly that.
 - **Testing the app** works like a real user, so it can change the app's data. In the running app, before anything that looks like it deletes data, costs money or sends something ("Delete", "Pay", "Subscribe", "Send email"…), a button with no name, or pressing Enter in a form such a button submits, **Scram Desktop asks you in its own window**: the agent can't answer that for you. No answer within 45 seconds counts as no. Clicks only ever land on the app itself: never on Scram's editor, or through something covering the app.
 - **Sign-in windows** open inside Scram Desktop only for known sign-in providers (Google, Microsoft, Apple, GitHub, Auth0, Clerk, Okta), or other sign-in pages that Scram's own page opened. They show their site in the title. Any other link opens in your browser, which shows the address, so nothing (e.g. an app in the preview) can open a window that only looks like a sign-in page.
+- **The autopilot** only starts after you confirm in Scram Desktop's own window (the agent can't), and agents are told to offer it only when you ask. While it runs, it keeps Scram to itself (agents can still look); you can stop it any time from the Scram Desktop menu. It pauses, with a notification, when it needs you.
 - **Only its own entry.** In each app's settings, Scram Desktop's entry is called `scram-desktop`. Anything else (e.g. some other server called "scram") is never changed. On Windows, only the Claude or ChatGPT desktop app itself is ever closed (to restart it): never Claude Code, or anything else with the same name.
 - **One action at a time.** Scram has one chat, so a second request waits instead of mixing into the first.
 - **Credits.** Every message to Scram's bot uses your Scram credits, the same as typing it yourself.
