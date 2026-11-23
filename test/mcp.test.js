@@ -176,6 +176,11 @@ test("the guides: briefs, themes and UI rules; nothing internal", async () => {
   assert.match(await read("themes"), /What vibe should the app have\?/);
   assert.match(await read("theme_examples"), /theme-1-scram\.ts[\s\S]*theme-6-clinic\.ts[\s\S]*theme-template\.ts/);
   assert.match(await read("ui_quality"), /# UI Quality Gate[\s\S]*# App Craft[\s\S]*# UI Consistency/);
+  // The research skill, for agents that don't have it installed: the method only (the agent researches).
+  const research = await read("research");
+  assert.match(research, /^---\nname: scram-research/);
+  assert.match(research, /# File: references\/site-research\.md[\s\S]*# File: references\/tribunal\.md/);
+  assert.match(research, /Scram Desktop builds in Scram; it\s+doesn't research anything/);
   const house = await client.callTool({ name: "scram_guide", arguments: { topic: "scram_house_style" } });
   assert.equal(house.isError, true); // not a topic
   await client.close();

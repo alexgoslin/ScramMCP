@@ -137,6 +137,17 @@ You'll see Claude's messages appear in Scram's AI chat, Scram's bot reply, and t
 - **Build hands-off with the autopilot, only if you ask for it.** Tell Claude what you want and say *"use the autopilot"*. Claude writes a step-by-step plan, Scram Desktop asks you to confirm, then it builds the whole thing by itself: it sends each step to Scram's bot, approves its plans, answers its questions, has it test each step, and checks the layout. It pauses (with a notification) when it needs you, e.g. for a password or API key. Stop it any time: **Scram Desktop menu → Stop autopilot**.
 - **Test the app it built**, like a person would: in Run mode, it reads the app's pages, fills in forms, clicks buttons and links, and checks what happens. If something doesn't work, it tells Scram's bot what went wrong, then tests again. Try asking: *"Using Scram, test the order form and fix anything that doesn't work."*
 
+### Optional: let your AI research first
+
+If you want an app like one that already exists (*"something like Trello for my team"*), or the best of a kind of app (*"the best booking app"*), your AI can research it first, the way the RoboBuild extension did. It works out what those apps do, their screens and how they work, what's worth building, and writes you a short briefing to check before anything is built. **Your AI does the research with its own tools** (web search, and a browser if it has one). Scram Desktop doesn't research anything.
+
+To set it up once: **Scram Desktop menu → Add the research skill to your AI…**, then choose your AI:
+- **Claude (the app or website):** Scram Desktop saves `scram-research.zip` in your Downloads folder. In Claude, go to **Customize → Skills**, click **+**, then **Create skill**, then **Upload a skill**, and choose that file. (Skills need Claude's code execution switched on: **Settings → Capabilities**.)
+- **The ChatGPT desktop app:** Scram Desktop adds it for you. Restart ChatGPT when it asks.
+- **Claude Code:** Scram Desktop adds it for you. Start a new Claude Code session.
+
+Then ask, for example: *"Research the best booking apps, then build one in Scram."* It only researches when you ask. It looks but doesn't touch: it never signs up, logs in or presses buttons that change anything on other sites, and it never copies another app's name, logo or text. Your app gets its own name and look.
+
 ### What Claude won't do
 
 Scram Desktop never clicks Scram's **Publish**, **delete project**, **sharing**, **billing** or **account** controls, and Claude is told never to ask Scram's bot to do those things unless you ask it to. Those stay with you.

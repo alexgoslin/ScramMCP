@@ -26,7 +26,10 @@ import {
   chatgptServer,
   CHATGPT_DOWNLOAD,
   connectAndStartChatGPT,
+  quitChatGPT,
+  startChatGPT,
 } from "./connect-chatgpt-app.js";
+import { CLAUDE_SKILLS_PAGE, installSkill, RESEARCH_SKILL, saveSkillZip, skillFolders } from "./skills.js";
 import { connectorEntry, connectorNotePlaces, waitForConnector } from "./connector-link.js";
 import { ScramDriver } from "./scram/driver.js";
 import { Autopilot } from "./scram/autopilot.js";
@@ -525,6 +528,74 @@ async function claudeDidntPickItUp() {
   if (response === 0) copyConnectionDetails();
 }
 
+// The research skill for the user's own AI (src/skills.js): the research phase the RoboBuild
+// extension did, which their AI now does with its own tools. Scram Desktop only hands it over.
+const RESEARCH_EXAMPLE = "\u201cResearch the best booking apps, then build one in Scram\u201d";
+async function addResearchSkill() {
+  const { response } = await dialog.showMessageBox(win, {
+    type: "question",
+    message: "Add the research skill to your AI",
+    detail: `The research skill teaches your own AI how to research an existing app, or the best apps of a kind, before building something like it in Scram: what they do, their screens and how they work, what's worth building, and a plain-English briefing for you to check. Your AI does the research with its own tools (web search, a browser). Scram Desktop doesn't research anything.\n\nYour AI uses it when you ask for research, for example ${RESEARCH_EXAMPLE}.\n\nWhich AI do you use?`,
+    buttons: ["Claude (the app or website)", "The ChatGPT desktop app", "Claude Code", "Cancel"],
+    defaultId: 0,
+    cancelId: 3,
+  });
+  if (response === 3) return;
+  try {
+    if (response === 0) {
+      // Claude keeps skills in the person's account, not on this computer: they upload the ZIP.
+      const file = saveSkillZip(RESEARCH_SKILL, app.getPath("downloads"));
+      log(`Saved the research skill for Claude: ${file}`);
+      const { response: next } = await dialog.showMessageBox(win, {
+        type: "info",
+        message: "Now add it in Claude",
+        detail: `Scram Desktop saved the skill as ${file}.\n\nIn Claude (the app or claude.ai):\n1. Go to Customize \u2192 Skills.\n2. Click +, then Create skill, then Upload a skill.\n3. Choose ${RESEARCH_SKILL}.zip from your Downloads folder.\n\nSkills need Claude's code execution switched on (Settings \u2192 Capabilities). You only do this once; after updating Scram Desktop, add it again to get the latest version.`,
+        buttons: ["Open Claude's Skills page", "Show the file", "Done"],
+        defaultId: 0,
+        cancelId: 2,
+      });
+      if (next === 0) shell.openExternal(CLAUDE_SKILLS_PAGE);
+      if (next === 1) shell.showItemInFolder(file);
+      return;
+    }
+    const chatgpt = response === 1;
+    const who = chatgpt ? "ChatGPT" : "Claude Code";
+    const result = installSkill(RESEARCH_SKILL, chatgpt ? skillFolders().chatgpt : skillFolders().claudeCode);
+    if (!result.ok) {
+      log(`Research skill not added for ${who}: ${result.reason}`);
+      await dialog.showMessageBox(win, { type: "warning", message: "Couldn't add the research skill", detail: result.reason });
+      return;
+    }
+    const done = `${result.updated ? "Updated" : "Added"} the research skill for ${who}`;
+    log(`${done}: ${result.dir}`);
+    if (!chatgpt) {
+      await dialog.showMessageBox(win, {
+        type: "info",
+        message: done,
+        detail: `It's in ${result.dir}. Start a new Claude Code session, then ask for research (for example ${RESEARCH_EXAMPLE}), or type /${RESEARCH_SKILL}.`,
+      });
+      return;
+    }
+    const running = (await chatgptRunning()) === true;
+    const { response: restart } = await dialog.showMessageBox(win, {
+      type: "info",
+      message: done,
+      detail: `It's in ${result.dir}, where the ChatGPT desktop app looks for your skills. ChatGPT picks it up when it ${running ? "next starts" : "opens"}. Then ask for research in a new chat, for example ${RESEARCH_EXAMPLE}.`,
+      buttons: running ? ["Restart ChatGPT now", "Later"] : ["OK"],
+      defaultId: 0,
+      cancelId: running ? 1 : 0,
+    });
+    if (running && restart === 0) {
+      const restarted = (await quitChatGPT()) && (await startChatGPT());
+      log(restarted ? "Restarted ChatGPT for the research skill." : "Couldn't restart ChatGPT for the research skill.");
+      if (!restarted) await dialog.showMessageBox(win, { type: "info", message: "Restart ChatGPT yourself", detail: "Scram Desktop couldn't restart the ChatGPT app. Quit it completely, then open it again, to pick up the research skill." });
+    }
+  } catch (e) {
+    log(`Couldn't add the research skill: ${e.message}`);
+    await dialog.showMessageBox(win, { type: "error", message: "Couldn't add the research skill", detail: e.message });
+  }
+}
+
 // Everything the Scram team needs to see why the Claude or ChatGPT app didn't connect.
 async function copyConnectionDetails() {
   const settingsDir = app.getPath("userData");
@@ -643,6 +714,7 @@ function buildMenu() {
         { label: "Connect Claude Code", click: connectClaude },
         { label: "Connect the ChatGPT desktop app", click: connectChatGPTApp },
         { label: "Connect another agent…", click: showConnectionDetails },
+        { label: "Add the research skill to your AI…", click: addResearchSkill },
         { label: "Copy Claude Code command", click: () => mcp && copy(connectInfo(mcp.url, config.token).claudeCode, "Claude Code command") },
         { label: "Make a new token…", click: makeNewToken },
         { type: "separator" },

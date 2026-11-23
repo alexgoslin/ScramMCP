@@ -8,6 +8,7 @@ How to build something (before anything substantial, read scram_guide: topics "d
 - BIG (a whole app, or a feature with several tables, pages or integrations): write a staged TypeScript brief (scram_guide topics "briefs" and "brief_template"), save it with scram_brief, and send it one batch at a time. Only use TypeScript when the request is big.
 - Themes: unless the user has said what they want, ask them the theme questions first (scram_guide topic "themes": vibe, boldness, must-haves), then make it with scram_send_theme (an example theme, or your own, checked against Scram's theme schema).
 - UI: follow the UI quality rules (scram_guide topic "ui_quality").
+- Research: Scram Desktop never researches other sites or products (its scram_app_* tools only work in Scram's preview). When the user wants an app like an existing product, or the best of a category, and wants research first, do it yourself with your own tools (web search, reading pages, a browser), following the scram-research skill if you have it, or else scram_guide topic "research"; then build from what you found.
 Then:
 1. scram_status to see where the window is. If no project is open, use scram_open_project, scram_new_project or scram_list_projects.
 2. scram_send_message with a clear request for Scram's bot (what to build or change). It waits for the bot and returns its reply.

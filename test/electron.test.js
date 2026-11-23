@@ -195,6 +195,8 @@ test("the Electron app serves MCP and builds through the chat", { skip, timeout:
     const guide = textOf(await call("scram_guide", { topic: "planning" }));
     assert.match(guide, /Planning a build in steps/);
     assert.match(textOf(await call("scram_guide")), /Using Scram to Build Apps/);
+    // The research skill's files are read from inside the app (in the installed app: its archive).
+    assert.match(textOf(await call("scram_guide", { topic: "research" })), /^---\nname: scram-research[\s\S]*# File: references\/tribunal\.md/);
     // The autopilot only starts once the person confirms in Scram Desktop's own window (the
     // test answers "Cancel").
     const pilot = await client.callTool({ name: "scram_autopilot_start", arguments: { steps: [{ title: "Setup", request: "Set up the app." }] } });

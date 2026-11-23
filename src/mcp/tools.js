@@ -10,6 +10,7 @@ import { Autopilot } from "../scram/autopilot.js";
 import { batchesOf, batchMessage, Briefs } from "../scram/briefs.js";
 import { ScramDriver, ScramError } from "../scram/driver.js";
 import { checkTheme, themeDocument, themeExamples, themeNotes } from "../scram/themes.js";
+import { RESEARCH_SKILL, skillText } from "../skills.js";
 import { INSTRUCTIONS } from "./instructions.js";
 
 // Scram know-how for the agent, read on request: from RoboBuild's guides, plus TypeScript briefs,
@@ -27,6 +28,8 @@ const GUIDES = {
   theme_examples: "The six example themes and the theme template, as TypeScript files.",
   design: "How to give an app its own distinctive, art-directed design.",
   ui_quality: "UI rules for the screens Scram builds: the quality gate (scope, and evidence before calling a screen finished), craft, and consistency.",
+  research:
+    "Researching an existing product, or a whole category of products, before building something like it in Scram: done by you, with your own tools (web search, reading pages, a browser); Scram Desktop doesn't research. Scoping, exploring a site safely, the screen spec, comparing products in a design tribunal, the user's questions, the briefing, and handing over to the build. (The same as the scram-research skill.)",
 };
 // (Always with \n line endings: Git on Windows may check the files out with \r\n.)
 const asset = (path) => readFileSync(new URL(`../guides/${path}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
@@ -41,6 +44,7 @@ const guide = (topic) =>
     brief_template: () => asset("typescript/brief-template.ts"),
     theme_examples: () => typescriptFiles((f) => /^theme-/.test(f)),
     ui_quality: () => asset("ui-quality.md"),
+    research: () => skillText(RESEARCH_SKILL),
   })[topic]?.() ?? asset(`${topic}.md`);
 
 
