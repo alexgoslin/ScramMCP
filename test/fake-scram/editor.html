@@ -135,12 +135,15 @@
 
   // A question like real Scram's: option cards, a "Write my own answer" box (Enter sends) and
   // Cancel, in place of the chat box until it's answered.
-  function ask() {
+  const SCOPE_OPTIONS = [
+    ["Help me scope it out", "We talk through who it's for, the key screens, the data, and the look before anything gets built."],
+    ["Just start building", "I make all the design and feature decisions and build the whole thing properly."],
+  ];
+  function ask(question = "Would you like to scope out the app first, or just start building?", options = SCOPE_OPTIONS) {
     const q = document.createElement("div");
     q.className = "msg bot question";
-    q.innerHTML = `<div>Would you like to scope out the app first, or just start building?</div>
-      <div class="card"><div class="t">Help me scope it out</div><div>We talk through who it's for, the key screens, the data, and the look before anything gets built.</div></div>
-      <div class="card"><div class="t">Just start building</div><div>I make all the design and feature decisions and build the whole thing properly.</div></div>
+    q.innerHTML = `<div>${question}</div>
+      ${options.map(([t, d]) => `<div class="card"><div class="t">${t}</div><div>${d}</div></div>`).join("\n      ")}
       <textarea id="own" placeholder="Write my own answer"></textarea>
       <button type="button" id="cancel-q">Cancel</button>`;
     messages.appendChild(q);
@@ -170,7 +173,13 @@
     window.sentMessages.push(text);
     add("user", text);
     box.textContent = "";
-    if (/question/i.test(text)) {
+    if (/header question/i.test(text)) {
+      await botSays("I have a question about the header.");
+      ask("What should happen to the old header?", [
+        ["Remove the old header", "Take the old header off every page and use the new one."],
+        ["Publish it now", "Put the app live for everyone with the new header."],
+      ]);
+    } else if (/question/i.test(text)) {
       await botSays("I have a question before I start.");
       ask();
     } else if (/plan/i.test(text)) {

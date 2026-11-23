@@ -60,20 +60,24 @@ before(async () => {
       SCRAM_MCP_TOKEN: TOKEN,
       SCRAM_MCP_USER_DATA: userData,
       SCRAM_MCP_NO_WELCOME: "1",
+      SCRAM_MCP_TEST_APPROVALS: "deny", // answers Scram Desktop's "Allow the AI to …?" message
     },
   });
   proc.stdout.on("data", (d) => (output += d));
   proc.stderr.on("data", (d) => (output += d));
-  for (let i = 0; i < 120; i++) {
-    const up = await fetch(`http://127.0.0.1:${port}/`).then((r) => r.ok).catch(() => false);
-    if (up) break;
-    await sleep(500);
+  // A first, cold start (Electron unpacking itself, the GPU set up for the first time, a slow CI
+  // machine) can take well over a minute: wait up to 3, and say so clearly if it never starts.
+  let up = false;
+  for (let i = 0; i < 360 && !up; i++) {
+    up = await fetch(`http://127.0.0.1:${port}/`).then((r) => r.ok).catch(() => false);
+    if (!up) await sleep(500);
   }
+  if (!up) throw new Error(`Scram Desktop didn't start (its MCP server never answered) within 3 minutes. Its output:\n${output}`);
   client = new Client({ name: "electron-test", version: "1.0.0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${TOKEN}` } } })
   );
-}, { timeout: 180000 });
+}, { timeout: 240000 });
 
 after(async () => {
   await client?.close().catch(() => {});
@@ -173,7 +177,7 @@ test("the Electron app serves MCP and builds through the chat", { skip, timeout:
     assert.match(risky.content[0].text, /Grace Hopper: Carrot/);
     const refused = await client.callTool({ name: "scram_app_click", arguments: { text: "Delete all orders" } });
     assert.equal(refused.isError, true);
-    assert.match(refused.content[0].text, /Ask the user first/);
+    assert.match(refused.content[0].text, /asked the user first, and they said no/); // (the test answers "Don't allow")
   } catch (e) {
     console.log("--- Electron output ---\n" + output);
     throw e;
@@ -196,7 +200,7 @@ test("starting it again doesn't start a second copy", { skip, timeout: 60000 }, 
   assert.match(textOf(await call("scram_status")), /"place"/);
 });
 
-test("brings over Scram MCP's settings (token, login) on its first run as Scram Desktop", { skip, timeout: 90000 }, async () => {
+test("brings over Scram MCP's settings (token, login) on its first run as Scram Desktop", { skip, timeout: 240000 }, async () => {
   const appData = mkdtempSync(join(tmpdir(), "scram-desktop-appdata-"));
   const old = join(appData, "Scram MCP");
   mkdirSync(join(old, "Partitions", "scram"), { recursive: true });
@@ -215,7 +219,7 @@ test("brings over Scram MCP's settings (token, login) on its first run as Scram 
   const third = spawn(cmd, cmdArgs, { cwd: new URL("..", import.meta.url), detached: true, env });
   try {
     let up = false;
-    for (let i = 0; i < 120 && !up; i++) {
+    for (let i = 0; i < 360 && !up; i++) {
       up = await fetch(`http://127.0.0.1:${oldPort}/`).then((r) => r.ok).catch(() => false);
       if (!up) await sleep(500);
     }
@@ -245,7 +249,7 @@ test("brings over Scram MCP's settings (token, login) on its first run as Scram 
   }
 });
 
-test("Connect the Claude desktop app: Claude's entry reaches the running app, with no token in it", { skip, timeout: 120000 }, async () => {
+test("Connect the Claude desktop app: Claude's entry reaches the running app, with no token in it", { skip, timeout: 240000 }, async () => {
   // The connector inside the app (installed), or the one built in the project (from source).
   const connector = packaged
     ? process.platform === "darwin"
@@ -266,7 +270,7 @@ test("Connect the Claude desktop app: Claude's entry reaches the running app, wi
   const appProc = spawn(cmd, cmdArgs, { cwd: new URL("..", import.meta.url), detached: true, env });
   try {
     let up = false;
-    for (let i = 0; i < 120 && !up; i++) {
+    for (let i = 0; i < 360 && !up; i++) {
       up = await fetch(`http://127.0.0.1:${appPort}/`).then((r) => r.ok).catch(() => false);
       if (!up) await sleep(500);
     }

@@ -47,7 +47,7 @@ jobs:
       - run: npm ci
       - name: Quick tests (on this system)
         shell: bash
-        run: node --test test/connect-claude-app.test.js test/connect-chatgpt-app.test.js test/mcp.test.js
+        run: node --test test/connect-claude-app.test.js test/connect-chatgpt-app.test.js test/popups.test.js test/mcp.test.js
       - run: npm run ${{ matrix.script }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false" # no signing certificate yet

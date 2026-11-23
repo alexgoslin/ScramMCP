@@ -9,7 +9,16 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { waitUntil } from "./apps.js";
 
-export const SERVER_NAME = "scram";
+// The name Scram Desktop's entry has in each app's settings. Not just "scram": that's left free
+// for anything else called Scram (e.g. an official Scram server), which is never touched.
+export const SERVER_NAME = "scram-desktop";
+// What Scram Desktop 0.5.0 and older called it. Replaced only when it's Scram Desktop's own entry.
+export const OLD_SERVER_NAME = "scram";
+
+// Is this an entry Scram Desktop wrote (any version)? It runs Scram Desktop's connector.
+export function isScramDesktopEntry(e) {
+  return !!e && typeof e === "object" && Array.isArray(e.args) && e.args.some((a) => /[\\/](claude-)?connector[\\/](dist[\\/])?index\.mjs$/i.test(String(a)));
+}
 
 // client: which app runs it ("claude", "chatgpt"), so each leaves its own "started" note. When
 // it's the installed app (not a development copy), the connector may also start that same program

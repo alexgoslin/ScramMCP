@@ -5,6 +5,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
+import { OLD_SERVER_NAME, SERVER_NAME } from "./connector-link.js";
 
 // Where Claude Code's `claude` command is. Apps started from the Start menu, desktop or Dock don't
 // always see the same PATH as a terminal, so its usual install places are checked first.
@@ -26,12 +27,19 @@ function run(file, args, env) {
   });
 }
 
-// Adds Scram Desktop to Claude Code for this user (all folders), replacing an older "scram" entry
-// (e.g. one with an old token). Returns { ok, claude } or { ok: false, reason, output }.
+// Scram Desktop's own server on this computer, as Claude Code describes it.
+const OURS = /https?:\/\/(127\.0\.0\.1|localhost):\d+\/mcp\b/;
+
+// Adds Scram Desktop to Claude Code for this user (all folders) as "scram-desktop", replacing an
+// older entry (e.g. one with an old token). An old "scram" entry is removed only if it's Scram
+// Desktop's (it points at this computer's /mcp address): any other "scram" is left alone.
+// Returns { ok, claude } or { ok: false, reason, output }.
 export async function connectClaudeCode({ url, token, env = process.env, ...where } = {}) {
   const claude = findClaude({ env, ...where });
   if (!claude) return { ok: false, reason: "not-found" };
-  await run(claude, ["mcp", "remove", "scram", "--scope", "user"], env); // fine if there was none
-  const added = await run(claude, ["mcp", "add", "--transport", "http", "--scope", "user", "scram", url, "--header", `Authorization: Bearer ${token}`], env);
+  const old = await run(claude, ["mcp", "get", OLD_SERVER_NAME], env);
+  if (old.ok && OURS.test(old.output)) await run(claude, ["mcp", "remove", OLD_SERVER_NAME, "--scope", "user"], env);
+  await run(claude, ["mcp", "remove", SERVER_NAME, "--scope", "user"], env); // fine if there was none
+  const added = await run(claude, ["mcp", "add", "--transport", "http", "--scope", "user", SERVER_NAME, url, "--header", `Authorization: Bearer ${token}`], env);
   return added.ok ? { ok: true, claude } : { ok: false, reason: "failed", output: added.output };
 }

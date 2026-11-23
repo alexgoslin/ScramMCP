@@ -263,15 +263,14 @@ export function createScramMcpServer(driver, { version = "0.1.0", activity } = {
     {
       title: "Click in the running app",
       description:
-        "Click a button, link, checkbox or tab in the running app (Run mode), with a real mouse click, then return what the app shows afterwards. Give its reference from scram_app_read, or its text. Testing can change the app's data, like a real user would: anything that looks like it deletes data, costs money or sends something (\"Delete\", \"Pay\", \"Send email\"…) is only clicked with confirm: true, after the user has agreed.",
+        "Click a button, link, checkbox or tab in the running app (Run mode), with a real mouse click, then return what the app shows afterwards. Give its reference from scram_app_read, or its text. Testing can change the app's data, like a real user would. Before anything that looks like it deletes data, costs money or sends something (\"Delete\", \"Pay\", \"Send email\"…), or a button with no name, Scram Desktop asks the user in its own window: if they say no, don't try again unless they ask you to.",
       inputSchema: z.object({
         ref: appRef,
         text: z.string().optional().describe("Or the text of what to click, e.g. \"Place order\"."),
-        confirm: z.boolean().optional().describe("Only after the user agreed: click something that may delete data, cost money or send something for real."),
       }),
       annotations: acts,
     },
-    guard("scram_app_click", activity, async ({ ref, text: label, confirm }) => appText(await driver.clickApp({ ref, text: label, confirm: !!confirm })))
+    guard("scram_app_click", activity, async ({ ref, text: label }) => appText(await driver.clickApp({ ref, text: label })))
   );
 
   server.registerTool(

@@ -1,7 +1,7 @@
 // "Connect the ChatGPT desktop app": adds Scram Desktop to the settings file the ChatGPT desktop
 // app reads its local tools (MCP servers) from: config.toml in the .codex folder in the user's
 // home folder (or in CODEX_HOME, if that's set). OpenAI's Codex shares that file, so Codex picks it
-// up too. The entry is a [mcp_servers.scram] table that runs Scram Desktop's connector (see
+// up too. The entry is a [mcp_servers.scram-desktop] table that runs Scram Desktop's connector (see
 // connector-link.js: no token in it). ChatGPT reads the file when it starts, so ChatGPT is quit
 // first, and started again afterwards.
 //
@@ -14,11 +14,12 @@ import { homedir, release } from "node:os";
 import { dirname, join } from "node:path";
 import { parse } from "smol-toml";
 import { appRunning, inWindowsStartMenu, quitApp, startApp, windowsProcesses } from "./apps.js";
-import { connectorNotePlaces, describeNotes, SERVER_NAME } from "./connector-link.js";
+import { connectorNotePlaces, describeNotes, isScramDesktopEntry, OLD_SERVER_NAME, SERVER_NAME } from "./connector-link.js";
 
 export const CHATGPT_APP = {
   winExe: "ChatGPT.exe",
   winPath: /\\WindowsApps\\OpenAI\.ChatGPT/,
+  winIs: /\\WindowsApps\\OpenAI\.ChatGPT|\\Programs\\ChatGPT\\|\\Program Files( \(x86\))?\\(OpenAI\\)?ChatGPT\\/i,
   winStartName: "ChatGPT",
   macName: "ChatGPT",
 };
@@ -66,15 +67,17 @@ export function scramTable(server, eol = "\n") {
 
 // A table header line: [a.b] or [[a.b]], with an optional comment after it.
 const HEADER = /^\s*\[\[?\s*([^\]]*?)\s*\]\]?\s*(#.*)?$/;
-const isScramHeader = (name) => new RegExp(`^mcp_servers\\s*\\.\\s*(${SERVER_NAME}|"${SERVER_NAME}"|'${SERVER_NAME}')\\s*(\\.|$)`).test(name);
+const tableOf = (key) => new RegExp(`^mcp_servers\\s*\\.\\s*(${key}|"${key}"|'${key}')\\s*(\\.|$)`);
 
-// The file without Scram Desktop's table (and its sub-tables, and the comment above it).
-export function withoutScramTable(text) {
+// The file without Scram Desktop's table (and its sub-tables, and the comment above it), and
+// without the table under its old name too if `old` (only when that one is Scram Desktop's).
+export function withoutScramTable(text, { old = false } = {}) {
+  const ours = [tableOf(SERVER_NAME), ...(old ? [tableOf(OLD_SERVER_NAME)] : [])];
   const out = [];
   let skipping = false;
   for (const line of text.split(/\r?\n/)) {
     const m = HEADER.exec(line);
-    if (m) skipping = isScramHeader(m[1]);
+    if (m) skipping = ours.some((re) => re.test(m[1]));
     if (!skipping && line.trim() !== COMMENT) out.push(line);
   }
   return out;
@@ -125,16 +128,19 @@ export function addToChatGPTConfig(file, server) {
       return result;
     }
   }
-  if (same(old.settings.mcp_servers?.[SERVER_NAME], server)) {
+  const oldOurs = isScramDesktopEntry(old.settings.mcp_servers?.[OLD_SERVER_NAME]);
+  if (same(old.settings.mcp_servers?.[SERVER_NAME], server) && !oldOurs) {
     result.unchanged.push(file);
     return result;
   }
-  const kept = withoutScramTable(old.text);
+  const kept = withoutScramTable(old.text, { old: oldOurs });
   while (kept.length && !kept[kept.length - 1].trim()) kept.pop();
   const next = (kept.length ? kept.join(old.eol) + old.eol + old.eol : "") + scramTable(server, old.eol);
 
   // It must read back as the old settings with exactly Scram Desktop's entry in place.
-  const expected = { ...old.settings, mcp_servers: { ...(old.settings.mcp_servers || {}), [SERVER_NAME]: server } };
+  const servers = { ...(old.settings.mcp_servers || {}) };
+  if (oldOurs) delete servers[OLD_SERVER_NAME];
+  const expected = { ...old.settings, mcp_servers: { ...servers, [SERVER_NAME]: server } };
   let ok = false;
   try {
     ok = same(parse(next), expected);
@@ -142,7 +148,7 @@ export function addToChatGPTConfig(file, server) {
     ok = false;
   }
   if (!ok) {
-    result.failed.push({ file, reason: "ChatGPT's settings file already sets up \"scram\" in a way Scram Desktop can't safely change, so it didn't change it" });
+    result.failed.push({ file, reason: `ChatGPT's settings file already sets up "${SERVER_NAME}" in a way Scram Desktop can't safely change, so it didn't change it` });
     return result;
   }
   try {
@@ -162,7 +168,7 @@ export function addToChatGPTConfig(file, server) {
 // The whole connect, restarting ChatGPT: quits it (if it's open), adds Scram Desktop to its
 // settings, and starts it again. Returns { result (as addToChatGPTConfig's), started }.
 export async function connectAndStartChatGPT(server, { platform = process.platform, env = process.env, home = homedir(), log = () => {} } = {}) {
-  const quit = !(await chatgptRunning(platform)) || (await quitChatGPT(platform));
+  const quit = (await chatgptRunning(platform)) === false || (await quitChatGPT(platform));
   if (!quit) log("Couldn't quit the ChatGPT app.");
   const result = addToChatGPTConfig(chatgptConfigFile({ env, home }), server);
   if (!quit || !(result.changed.length || result.unchanged.length)) return { result, started: false };
@@ -186,7 +192,7 @@ export async function chatgptConnectionReport({ platform = process.platform, env
     try {
       const servers = readToml(file).settings.mcp_servers || {};
       const scram = servers[SERVER_NAME];
-      state = `${scram ? `has scram: ${JSON.stringify(scram)}` : "no scram entry"}; servers: ${Object.keys(servers).join(", ") || "none"} (changed ${statSync(file).mtime.toISOString()})`;
+      state = `${scram ? `has ${SERVER_NAME}: ${JSON.stringify(scram)}` : `no ${SERVER_NAME} entry`}; servers: ${Object.keys(servers).join(", ") || "none"} (changed ${statSync(file).mtime.toISOString()})`;
     } catch {
       state = "not valid TOML";
     }

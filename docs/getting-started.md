@@ -134,9 +134,9 @@ You'll see Claude's messages appear in Scram's AI chat, Scram's bot reply, and t
 
 ### What Claude won't do
 
-Claude never **publishes** your app, **deletes** anything, or touches **sharing, billing or your account**. Those stay with you.
+Scram Desktop never clicks Scram's **Publish**, **delete project**, **sharing**, **billing** or **account** controls, and Claude is told never to ask Scram's bot to do those things unless you ask it to. Those stay with you.
 
-Testing your app works like a real user, so it can add test data to your app (for example a test order). Before it clicks anything in your app that could delete data, cost money or send something for real, Claude has to ask you first.
+Testing your app works like a real user, so it can add test data to your app (for example a test order). Before Claude clicks anything in your app that could delete data, cost money or send something for real, **Scram Desktop asks you in its own window** ("Allow the AI to click 'Delete all orders' in your app?"). Only you can click **Allow**: Claude can't. If you don't answer within 45 seconds, it isn't done.
 
 ---
 
@@ -153,9 +153,9 @@ Testing your app works like a real user, so it can add test data to your app (fo
 
 | What you see | What to do |
 |---|---|
-| **Claude desktop app:** Claude doesn't seem to know about Scram | Start a **new chat** in Claude. If that doesn't help, click **Connect the Claude desktop app** in Scram Desktop again. If it says Claude hasn't started Scram Desktop, click **Copy details** and paste them in the comments (they don't include any passwords or keys). In Claude, **Settings → Desktop app → Extensions → Local MCP servers** should list **scram**. |
+| **Claude desktop app:** Claude doesn't seem to know about Scram | Start a **new chat** in Claude. If that doesn't help, click **Connect the Claude desktop app** in Scram Desktop again. If it says Claude hasn't started Scram Desktop, click **Copy details** and paste them in the comments (they don't include any passwords or keys). In Claude, **Settings → Desktop app → Extensions → Local MCP servers** should list **scram-desktop**. |
 | **ChatGPT desktop app:** ChatGPT doesn't seem to know about Scram | Start a **new chat**. If that doesn't help, click **Connect the ChatGPT desktop app** in Scram Desktop again. Then click **Scram Desktop menu → Copy connection details (for the Scram team)** and paste them in the comments (they don't include any passwords or keys). |
-| **Claude Code:** Claude says it can't reach Scram, or "scram" isn't in its list of tools | Make sure Scram Desktop is open. Then, in Claude Code, type `/mcp` and check **scram** says *connected*. If it doesn't, click **Connect Claude Code** in Scram Desktop again, then restart Claude Code (type `/exit`, then `claude`). |
+| **Claude Code:** Claude says it can't reach Scram, or "scram-desktop" isn't in its list of tools | Make sure Scram Desktop is open. Then, in Claude Code, type `/mcp` and check **scram-desktop** says *connected*. If it doesn't, click **Connect Claude Code** in Scram Desktop again, then restart Claude Code (type `/exit`, then `claude`). |
 | Claude says you need to log in | Log in to Scram in the Scram Desktop window. |
 | Nothing happens when you open Scram Desktop | It may already be running in the background. Restart your computer, or on Windows end **Scram Desktop** in Task Manager, then open it again. |
 | Windows blocks the installer with no "Run anyway" | Your PC has Smart App Control or a work security policy. Let us know in the comments. |

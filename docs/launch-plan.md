@@ -111,7 +111,7 @@ Most coding assistants can use Scram Desktop's local server with a token. Each k
 **Caveat:** OpenAI, Google and Microsoft change these settings formats often. Each button needs a quick test against the real product before release.
 
 **Update (v0.4.0): Connect the ChatGPT desktop app.** Scram chose the ChatGPT desktop app (not a Codex-specific button). The ChatGPT desktop app now reads local tools from the same file as Codex, `.codex/config.toml` in the home folder, so the button works like the Claude one:
-- It adds a `[mcp_servers.scram]` table that runs Scram Desktop's connector (no token in it), and leaves the rest of the file alone. The result is checked with a TOML parser before it's saved. Codex picks the entry up too, at no extra cost.
+- It adds a `[mcp_servers.scram-desktop]` table that runs Scram Desktop's connector (no token in it), and leaves the rest of the file alone. The result is checked with a TOML parser before it's saved. Codex picks the entry up too, at no extra cost.
 - It quits ChatGPT (`ChatGPT.exe` / `ChatGPT`), writes the file, starts ChatGPT again, and says **Connected** when ChatGPT starts the connector.
 - **Known OpenAI issue:** [openai/codex#38162](https://github.com/openai/codex/issues/38162) (open in November 2026) reports that the ChatGPT desktop app finds local tools but doesn't offer them in normal chats, on Windows and Mac; some report they work in other modes. Our side can't fix that. Once OpenAI does, it works with no change from us.
 - **Not yet tried with a real ChatGPT account:** the file format, the app's program name and its Start-menu name come from OpenAI's docs and reports, and are checked by tests, but need one real try on a PC and a Mac.

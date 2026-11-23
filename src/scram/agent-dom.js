@@ -1443,6 +1443,13 @@
     const field = (el.tagName === "LABEL" && el.control) || [...el.querySelectorAll(FIELD)].find(isVisible);
     return field ? refOf(field) : ref;
   }
+  // The label of the button that pressing Enter in this field would submit, if it's in a form.
+  function submitLabelFor(ref) {
+    const form = byRef(ref)?.form;
+    if (!form) return null;
+    const btn = form.querySelector("button[type=submit],input[type=submit],button:not([type])");
+    return btn ? labelOf(btn) || "(a button with no name)" : null;
+  }
   // What a field holds now (to check typing worked), and whether it has the keyboard focus.
   function refValue(ref) {
     const el = byRef(ref);
@@ -1492,7 +1499,7 @@
   }
 
   window.__sabDom = {
-    a11yTree, findRefs, refTarget, refValue, fieldRef, elementAt, focusedInfo, formInput, scrollToRef, viewport, setRefPrefix, settle,
+    a11yTree, findRefs, refTarget, refValue, fieldRef, submitLabelFor, elementAt, focusedInfo, formInput, scrollToRef, viewport, setRefPrefix, settle,
     findText, modeToggle, closePanel, panelCloseTarget, projectNameTarget, typeActive, backTarget, frontendTab, chatPanelBox, chatExpandTarget, chatHeaderInfo, newChatTarget, isHeaderId: (id) => isHeaderControl(byId(id)),
     snapshot, describeTarget, click, typeText, pressKey, scroll, bodyText, signature, extract,
     findChatInput, findSendButton, inputValue, typeChat, isGenerating, chatText, chatReadable, awaitingUser, attachFile, attachVia, scanChat, fileShown, composerState, centerOf, expandCollapsed, chatAtBottom, previewFrame, chatColumn,

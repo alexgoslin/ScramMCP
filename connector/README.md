@@ -11,7 +11,7 @@ Claude / ChatGPT desktop app ──stdio──▶ connector (index.mjs, run by S
 
 ## What each button does
 
-Both buttons add a `scram` entry to that app's own settings file. The entry runs Scram Desktop's own program acting as Node.js (`ELECTRON_RUN_AS_NODE`), running this connector:
+Both buttons add a `scram-desktop` entry to that app's own settings file. (Scram Desktop 0.5.0 and older called it `scram`: such an entry is renamed, but only if it's Scram Desktop's own, i.e. it runs this connector. Any other `scram` is left alone.) The entry runs Scram Desktop's own program acting as Node.js (`ELECTRON_RUN_AS_NODE`), running this connector:
 
 - **Nothing extra is installed**, and **there's no token in it**: the connector finds the token by itself.
 - **Everything else in the file is kept.** The file is backed up once (as `<file>.before-scram-desktop`), and a file Scram Desktop can't read is never touched.
@@ -24,7 +24,7 @@ Both buttons add a `scram` entry to that app's own settings file. The entry runs
 - **File:** `claude_desktop_config.json`, as JSON:
   ```json
   "mcpServers": {
-    "scram": {
+    "scram-desktop": {
       "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\Scram Desktop\\Scram Desktop.exe",
       "args": ["C:\\Users\\<you>\\AppData\\Local\\Programs\\Scram Desktop\\resources\\connector\\index.mjs"],
       "env": { "ELECTRON_RUN_AS_NODE": "1", "SCRAM_DESKTOP_APP_RUNS_CONNECTOR": "1" }
@@ -44,7 +44,7 @@ Both buttons add a `scram` entry to that app's own settings file. The entry runs
 - **File:** `config.toml` in the `.codex` folder in your home folder (`%USERPROFILE%\.codex\` on Windows, `~/.codex/` on a Mac), or in `CODEX_HOME` if that's set. It's TOML, and OpenAI's Codex reads the same file, so Codex picks the entry up too:
   ```toml
   # Added by Scram Desktop (Connect the ChatGPT desktop app): lets ChatGPT work in Scram.
-  [mcp_servers.scram]
+  [mcp_servers.scram-desktop]
   command = "C:\\Users\\<you>\\AppData\\Local\\Programs\\Scram Desktop\\Scram Desktop.exe"
   args = ["C:\\Users\\<you>\\AppData\\Local\\Programs\\Scram Desktop\\resources\\connector\\index.mjs"]
   env = { ELECTRON_RUN_AS_NODE = "1", SCRAM_DESKTOP_APP_RUNS_CONNECTOR = "1", SCRAM_CONNECTOR_CLIENT = "chatgpt", SCRAM_DESKTOP_CONFIG = "…\\Scram Desktop\\config.json", SystemRoot = "C:\\WINDOWS" }
@@ -52,7 +52,7 @@ Both buttons add a `scram` entry to that app's own settings file. The entry runs
   tool_timeout_sec = 120
   ```
   - `SCRAM_DESKTOP_CONFIG` and `SystemRoot` are there because ChatGPT may start programs with only a few of the usual Windows settings.
-- **Editing it safely:** only the `[mcp_servers.scram]` table (and its sub-tables) is replaced, or added at the end. The result is read back with a TOML parser before it's saved: it must be the old settings plus exactly Scram Desktop's entry, or nothing is written. Comments, line endings and a byte-order mark are kept.
+- **Editing it safely:** only the `[mcp_servers.scram-desktop]` table (and its sub-tables, and an old `[mcp_servers.scram]` of Scram Desktop's own) is replaced, or added at the end. The result is read back with a TOML parser before it's saved: it must be the old settings plus exactly Scram Desktop's entry, or nothing is written. Comments, line endings and a byte-order mark are kept.
 - **The app:** `ChatGPT.exe` on Windows (started from the Start menu entry "ChatGPT"), `ChatGPT` on a Mac.
 - ChatGPT may only start its local tools when a chat needs them, so after the restart Scram Desktop waits briefly, then says to start a new chat, and says **Connected** when ChatGPT starts the connector.
 - **Known OpenAI issue** ([openai/codex#38162](https://github.com/openai/codex/issues/38162), open in November 2026): the ChatGPT desktop app finds local tools but doesn't always offer them in normal chats. The connection is right; that part is up to OpenAI.

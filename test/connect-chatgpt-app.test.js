@@ -87,7 +87,7 @@ test("keeps everything else exactly as it was, and backs up the old file once", 
   assert.equal(settings.model, "gpt-5");
   assert.equal(settings.mcp_servers.github.env.GITHUB_TOKEN, "ghp_secret");
   assert.equal(settings.profiles.work.model, "o5");
-  assert.deepEqual(plain(settings.mcp_servers.scram), server);
+  assert.deepEqual(plain(settings.mcp_servers[SERVER_NAME]), server);
   assert.equal(readFileSync(`${file}.before-scram-desktop`, "utf8"), before);
 });
 
@@ -99,9 +99,9 @@ test("replaces an older Scram Desktop entry (and its sub-tables) wherever it is,
       'model = "gpt-5"',
       "",
       "# Added by Scram Desktop (Connect the ChatGPT desktop app): lets ChatGPT work in Scram.",
-      "[mcp_servers.scram]",
+      "[mcp_servers.scram]", // what Scram Desktop 0.5.0 and older called it
       'command = "C:\\\\old\\\\Scram Desktop.exe"',
-      'args = ["old.mjs"]',
+      'args = ["C:\\\\old\\\\resources\\\\claude-connector\\\\old.mjs", "C:\\\\old\\\\resources\\\\connector\\\\index.mjs"]',
       "",
       "[mcp_servers.scram.env]",
       'ELECTRON_RUN_AS_NODE = "1"',
@@ -115,9 +115,23 @@ test("replaces an older Scram Desktop entry (and its sub-tables) wherever it is,
   const after = readFileSync(file, "utf8");
   assert.deepEqual(scramIn(file), server);
   assert.equal(parse(after).mcp_servers.other.url, "http://127.0.0.1:9000/mcp");
-  assert.equal(after.match(/\[mcp_servers\.scram\]/g).length, 1);
+  assert.equal(after.match(/\[mcp_servers\.scram-desktop\]/g).length, 1);
+  assert.doesNotMatch(after, /\[mcp_servers\.scram\]/); // the old name is gone
   assert.equal(after.match(/Added by Scram Desktop/g).length, 1);
   assert.doesNotMatch(after, /old\.mjs/);
+  // Connecting again changes nothing.
+  assert.deepEqual(addToChatGPTConfig(file, server).unchanged, [file]);
+});
+
+test("leaves someone else's \"scram\" server alone", () => {
+  const file = join(fresh(), "config.toml");
+  const theirs = '[mcp_servers.scram]\nurl = "https://mcp.example-scram.com/mcp"\n';
+  writeFileSync(file, theirs);
+  assert.deepEqual(addToChatGPTConfig(file, server).changed, [file]);
+  const after = readFileSync(file, "utf8");
+  assert.ok(after.startsWith(theirs));
+  assert.equal(parse(after).mcp_servers.scram.url, "https://mcp.example-scram.com/mcp");
+  assert.deepEqual(scramIn(file), server);
 });
 
 test("keeps Windows line endings and a byte-order mark", () => {
@@ -137,9 +151,9 @@ test("never touches a file it can't read, or one where it can't change scram saf
   const r1 = addToChatGPTConfig(broken, server);
   assert.match(r1.failed[0].reason, /isn't valid TOML/);
   assert.equal(readFileSync(broken, "utf8"), "model = \n[[[");
-  // "scram" set up another way (an inline table), which a new [mcp_servers.scram] would clash with:
+  // "scram-desktop" set up another way (an inline table), which a new table would clash with:
   const inline = join(dir, "inline.toml");
-  const text = '[mcp_servers]\nscram = { command = "something-else" }\n';
+  const text = '[mcp_servers]\nscram-desktop = { command = "something-else" }\n';
   writeFileSync(inline, text);
   const r2 = addToChatGPTConfig(inline, server);
   assert.equal(r2.changed.length, 0);
@@ -154,7 +168,7 @@ test("the details to send list ChatGPT's servers by name only (no secrets)", asy
   writeFileSync(file, '[mcp_servers.github]\ncommand = "npx"\nenv = { GITHUB_TOKEN = "ghp_secret123" }\n');
   addToChatGPTConfig(file, server);
   const report = await chatgptConnectionReport({ platform: "linux", env: {}, home, settingsDir: join(home, "Scram Desktop") });
-  assert.match(report, /has scram: .*SCRAM_CONNECTOR_CLIENT.*servers: github, scram/);
+  assert.match(report, /has scram-desktop: .*SCRAM_CONNECTOR_CLIENT.*servers: github, scram-desktop/);
   assert.doesNotMatch(report, /ghp_secret123|GITHUB_TOKEN/);
 });
 
@@ -165,15 +179,24 @@ test("on Windows, finds and quits the ChatGPT app", { skip: process.platform !==
     execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", check], { env: { ...process.env, SCRIPT: script }, stdio: "pipe" });
   }
   assert.equal(await chatgptRunning("win32"), false);
-  const exe = join(fresh(), "ChatGPT.exe");
-  copyFileSync(process.execPath, exe);
+  // The stand-in app is where the Store installs ChatGPT; another ChatGPT.exe must never be closed.
+  const dir = fresh();
+  const exe = join(dir, "WindowsApps", "OpenAI.ChatGPT-Desktop_1.0.0.0_x64__2p2nqsd0c76g0", "app", "ChatGPT.exe");
+  const other = join(dir, "Downloads", "ChatGPT.exe");
+  for (const e of [exe, other]) {
+    mkdirSync(dirname(e), { recursive: true });
+    copyFileSync(process.execPath, e);
+  }
   const fake = spawn(exe, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });
+  const fakeOther = spawn(other, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });
   try {
     await new Promise((r) => setTimeout(r, 1500));
     assert.equal(await chatgptRunning("win32"), true);
     assert.equal(await quitChatGPT("win32"), true);
     assert.equal(await chatgptRunning("win32"), false);
+    assert.equal(fakeOther.exitCode, null, "the other ChatGPT.exe is still running");
   } finally {
     fake.kill();
+    fakeOther.kill();
   }
 });

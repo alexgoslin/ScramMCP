@@ -12,11 +12,21 @@ import { playwrightPage } from "./playwright-page.js";
 const { chromium } = createRequire(import.meta.url)("playwright");
 
 let site, browser, page, driver;
+// Stands in for Scram Desktop's "Allow the AI to …?" message: records what was asked, and
+// answers with `answer`.
+const asked = [];
+let answer = "deny";
 before(async () => {
   site = await startFakeScram();
   browser = await chromium.launch();
   page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-  driver = new ScramDriver(playwrightPage(page), { urls: scramUrls(site.url) });
+  driver = new ScramDriver(playwrightPage(page), {
+    urls: scramUrls(site.url),
+    approve: async (q) => {
+      asked.push(q.action);
+      return answer;
+    },
+  });
 });
 after(async () => {
   await browser?.close();
@@ -94,6 +104,16 @@ test("a question: answer cards and the Write my own answer box, like real Scram"
   await driver.sendMessage("One more question", { waitMs: 60000 });
   const c = await driver.choose({ labels: ["Help me scope"], waitMs: 60000 });
   assert.match(c.reply, /I'll go with: Help me scope it out/);
+
+  // An option that removes something from the app is a design choice, and can be picked; one
+  // that publishes the app can't (and isn't even offered).
+  const h = await driver.sendMessage("A header question", { waitMs: 60000 });
+  assert.ok(h.choices.some((x) => x.startsWith("Remove the old header (")), JSON.stringify(h.choices));
+  assert.ok(!h.choices.some((x) => /Publish/.test(x)), JSON.stringify(h.choices));
+  await assert.rejects(driver.answerQuestion("Publish it now"), /never clicks publish/);
+  assert.ok(!(await sent()).includes("Publish it now"), "not typed in as a written answer either");
+  const d = await driver.answerQuestion("Remove the old header", { waitMs: 60000 });
+  assert.match(d.reply, /I'll go with: Remove the old header/);
 });
 
 test("Run mode and Edit mode", async () => {
@@ -159,11 +179,40 @@ test("tests the running app: reads it, types, chooses, clicks, scrolls (Run mode
   assert.match(orders, /Ada Lovelace: Lemon/);
   assert.match(orders, /#orders/);
 
-  // Something that deletes data: only with confirm (after asking the user).
-  await assert.rejects(driver.clickApp({ text: "Delete all orders" }), /could delete data.*Ask the user first.*confirm: true/s);
+  // Something that deletes data: only if the person clicks Allow in Scram Desktop's own message
+  // (the agent can't say yes for them). No, and no answer in time, leave it alone.
+  assert.equal(asked.length, 0, "ordinary clicks and typing (Place order, Enter) don't ask");
+  answer = "deny";
+  await assert.rejects(driver.clickApp({ text: "Delete all orders" }), /asked the user first, and they said no/);
+  assert.deepEqual(asked, ["click “Delete all orders” in your app"]);
+  answer = "timeout";
+  await assert.rejects(driver.clickApp({ text: "Delete all orders" }), /nobody answered in time/);
   assert.equal((await state()).orders, 2);
-  assert.match(await driver.clickApp({ text: "Delete all orders", confirm: true }), /No orders yet/);
+  answer = "allow";
+  assert.match(await driver.clickApp({ text: "Delete all orders" }), /No orders yet/);
   assert.equal((await state()).orders, 0);
+  await driver.clickApp({ text: "Order" });
+
+  // A button with only an icon: what it does can't be told, so it asks too.
+  const iconRef = (await driver.readApp()).match(/button "" \[(app_ref_\d+)\]/)[1];
+  asked.length = 0;
+  answer = "deny";
+  await assert.rejects(driver.clickApp({ ref: iconRef }), /they said no/);
+  assert.match(asked[0], /unlabelled button/);
+  assert.equal(await appFrame().evaluate(() => window.iconClicks), 0);
+  // Enter in a field whose form is submitted by a risky button ("Subscribe") asks as well.
+  await assert.rejects(driver.typeInApp({ field: "Newsletter email", text: "ada@example.com", pressEnter: true }), /they said no/);
+  assert.match(asked[1], /press Enter in “Newsletter email”, which submits “Subscribe”/);
+  assert.equal(await appFrame().evaluate(() => window.subscribed), undefined);
+  // "Don't ask again until Scram Desktop is closed": later risky clicks go ahead without asking.
+  answer = "allow-session";
+  await driver.clickApp({ ref: iconRef });
+  answer = "deny"; // (not asked any more)
+  await driver.typeInApp({ field: "Newsletter email", text: "ada@example.com", pressEnter: true });
+  assert.equal(asked.length, 3);
+  assert.equal(await appFrame().evaluate(() => window.iconClicks), 1);
+  assert.equal(await appFrame().evaluate(() => window.subscribed), "ada@example.com");
+  driver.riskyAllowed = false;
 
   // Never clicks through something of Scram's that covers the app.
   await page.evaluate(() => {
@@ -173,7 +222,7 @@ test("tests the running app: reads it, types, chooses, clicks, scrolls (Run mode
     d.style.cssText = "position:fixed;left:300px;top:40px;right:0;bottom:0;background:#fff;z-index:9";
     document.body.append(d);
   });
-  await assert.rejects(driver.clickApp({ text: "Order" }), /covering the running app/);
+  await assert.rejects(driver.clickApp({ text: "Today's orders" }), /covering the running app/);
   await page.evaluate(() => document.getElementById("cover").remove());
 
   // A wrong reference, and Edit mode.

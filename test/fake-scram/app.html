@@ -29,6 +29,8 @@
       <button type="submit">Place order</button>
     </form>
     <p id="result" role="status"></p>
+    <button id="icon-btn" type="button"><svg width="16" height="16"><circle cx="8" cy="8" r="6"></circle></svg></button>
+    <form id="news"><input id="news-email" placeholder="Newsletter email"> <button>Subscribe</button></form>
     <div id="spacer"></div>
     <p id="footer">Bakery Orders, made with Scram</p>
   </section>
@@ -60,6 +62,12 @@
   function renderOrders() {
     document.getElementById("orders").innerHTML = orders.map((o) => `<li>${o.name}: ${o.cake}</li>`).join("") || "<li>No orders yet</li>";
   }
+  window.iconClicks = 0;
+  document.getElementById("icon-btn").addEventListener("click", () => window.iconClicks++);
+  document.getElementById("news").addEventListener("submit", (e) => {
+    e.preventDefault();
+    window.subscribed = document.getElementById("news-email").value;
+  });
   document.getElementById("delete-all").addEventListener("click", () => {
     orders.length = 0;
     renderOrders();

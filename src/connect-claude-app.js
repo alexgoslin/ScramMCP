@@ -8,7 +8,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameS
 import { homedir, release } from "node:os";
 import { dirname, join } from "node:path";
 import { appRunning, quitApp, startApp, waitUntil, windowsProcesses, windowsProcessesScript, windowsStartScript } from "./apps.js";
-import { connectorNotePlaces, describeNotes, SERVER_NAME } from "./connector-link.js";
+import { connectorNotePlaces, describeNotes, isScramDesktopEntry, OLD_SERVER_NAME, SERVER_NAME } from "./connector-link.js";
 
 export const CONFIG_NAME = "claude_desktop_config.json";
 
@@ -115,7 +115,8 @@ export function hasEntry(file, entry) {
 }
 
 // Adds (or replaces) Scram Desktop's entry in each settings file, keeping everything else in
-// it. Makes the first file if Claude hasn't yet; skips the others if their folder isn't there.
+// it (an older "scram" entry is removed only if Scram Desktop wrote it). Makes the first file if
+// Claude hasn't yet; skips the others if their folder isn't there.
 // Never overwrites a file it can't read as JSON. Returns { changed, unchanged, failed: [{ file, reason }] }.
 export function addToClaudeConfig(files, entry) {
   const result = { changed: [], unchanged: [], failed: [] };
@@ -134,14 +135,17 @@ export function addToClaudeConfig(files, entry) {
         return;
       }
     }
-    if (JSON.stringify(config.mcpServers?.[SERVER_NAME]) === JSON.stringify(entry)) {
+    const oldOurs = isScramDesktopEntry(config.mcpServers?.[OLD_SERVER_NAME]);
+    if (JSON.stringify(config.mcpServers?.[SERVER_NAME]) === JSON.stringify(entry) && !oldOurs) {
       result.unchanged.push(file);
       return;
     }
     try {
       mkdirSync(dirname(file), { recursive: true });
       if (existsSync(file) && !existsSync(`${file}.before-scram-desktop`)) copyFileSync(file, `${file}.before-scram-desktop`);
-      const next = { ...config, mcpServers: { ...(config.mcpServers || {}), [SERVER_NAME]: entry } };
+      const servers = { ...(config.mcpServers || {}) };
+      if (oldOurs) delete servers[OLD_SERVER_NAME];
+      const next = { ...config, mcpServers: { ...servers, [SERVER_NAME]: entry } };
       writeFileSync(`${file}.tmp`, `${JSON.stringify(next, null, 2)}\n`);
       renameSync(`${file}.tmp`, file);
       result.changed.push(file);
@@ -159,7 +163,15 @@ export const wroteSomewhere = (result) => Boolean(result && (result.changed.leng
 // Claude Code (the command-line Claude) is also claude.exe on Windows: it's never the desktop app.
 const CLAUDE_CODE_PROGRAM = /[\\/]\.local[\\/](bin|share)[\\/]|claude-?code/i;
 
-export const CLAUDE_APP = { winExe: "claude.exe", winSkip: CLAUDE_CODE_PROGRAM, winStartName: "Claude", winFallback: "AnthropicClaude\\claude.exe", macName: "Claude" };
+export const CLAUDE_APP = {
+  winExe: "claude.exe",
+  // The Store (MSIX) install, the normal installer's, and a company-wide install.
+  winIs: /\\WindowsApps\\(AnthropicPBC\.)?Claude_|\\AnthropicClaude\\|\\Programs\\Claude\\|\\Program Files( \(x86\))?\\(Anthropic\\)?Claude\\/i,
+  winSkip: CLAUDE_CODE_PROGRAM,
+  winStartName: "Claude",
+  winFallback: "AnthropicClaude\\claude.exe",
+  macName: "Claude",
+};
 
 export const windowsClaudeProcessesScript = () => windowsProcessesScript(CLAUDE_APP);
 export const windowsStartClaudeScript = () => windowsStartScript(CLAUDE_APP);
@@ -194,7 +206,7 @@ const mergeResults = (a, b) => ({ changed: [...a.changed, ...b.changed], unchang
 export async function connectAndStartClaude(entry, { platform = process.platform, env = process.env, home = homedir(), log = () => {} } = {}) {
   const inUse = await claudeDataDirsInUse(platform);
   if (inUse.length) log(`The running Claude app uses ${inUse.join(", ")}`);
-  const quit = !(await claudeRunning(platform)) || (await quitClaude(platform));
+  const quit = (await claudeRunning(platform)) === false || (await quitClaude(platform));
   if (!quit) log("Couldn't quit the Claude app.");
   let result = addToClaudeConfig(claudeConfigFiles({ platform, env, home, inUse }), entry);
   if (!quit || !wroteSomewhere(result)) return { result, started: false };
@@ -244,11 +256,13 @@ export function claudeLogsAboutScram(options = {}) {
   const excerpts = [];
   let sawLogs = false;
   for (const dir of claudeLogDirs({ dataDirs: claudeDataDirs(options), ...options })) {
-    const own = join(dir, `mcp-server-${SERVER_NAME}.log`);
     const main = join(dir, "mcp.log");
     if (existsSync(main)) sawLogs = true;
-    const ownLines = lastLines(own, 12);
-    if (ownLines.length) excerpts.push({ file: own, lines: ownLines });
+    for (const name of [SERVER_NAME, OLD_SERVER_NAME]) {
+      const own = join(dir, `mcp-server-${name}.log`);
+      const ownLines = lastLines(own, 12);
+      if (ownLines.length) excerpts.push({ file: own, lines: ownLines });
+    }
     const mainLines = lastLines(main, 8, (l) => /scram/i.test(l));
     if (mainLines.length) excerpts.push({ file: main, lines: mainLines });
   }
@@ -267,7 +281,8 @@ function describeConfig(file) {
     const servers = readConfig(file).mcpServers || {};
     const names = Object.keys(servers);
     const scram = servers[SERVER_NAME];
-    return `${scram ? `has scram: ${JSON.stringify(scram)}` : "no scram entry"}; servers: ${names.join(", ") || "none"}${modified}`;
+    const old = isScramDesktopEntry(servers[OLD_SERVER_NAME]) ? `; an old "${OLD_SERVER_NAME}" entry of Scram Desktop's too` : "";
+    return `${scram ? `has ${SERVER_NAME}: ${JSON.stringify(scram)}` : `no ${SERVER_NAME} entry`}${old}; servers: ${names.join(", ") || "none"}${modified}`;
   } catch {
     return `not valid JSON${modified}`;
   }

@@ -30,8 +30,14 @@ const POLL_MS = 1500;
 const LONG_MESSAGE = 1500; // longer messages that won't type are attached as a .md file
 const MAX_REPLY_CHARS = 20000;
 
-// Never offered or clicked, whatever is asked (from RoboBuild's "never click" list).
+// Scram's own controls (dashboard, editor): never offered or clicked, whatever is asked (from
+// RoboBuild's "never click" list).
 const NEVER_CLICK = /publish|deploy|delete|remove|log ?out|sign ?out|billing|upgrade|invite|share|cookie|bug report|savepoint|generate token|reset pane/i;
+// The bot's own answer options in the chat: never the ones that act on the account or the live
+// app. Design choices that remove or delete something in the app ("Remove the old header") are
+// fine: they're what the bot is asking about.
+const NEVER_CHOOSE =
+  /publish|deploy|go live|delete (the |this |my |your )?(whole )?(project|app|account|workspace|team)|log ?out|sign ?out|billing|upgrade|subscription|invite|share|bug report|savepoint|restore (a |the )?(savepoint|version|backup)|generate token/i;
 // The chat's own furniture: not answers to anything.
 const NOT_A_CHOICE = /^(send|attach files?|stop|stop generating|stop response|plans?|new chat|chat history|history|collapse|expand|page structure|read more|show more|see more|ask claude.*)$/i;
 const STOP_LABEL = /^(stop|stop generating|stop response|cancel generation)$/i;
@@ -41,8 +47,11 @@ const SUBMIT_LABEL = /^(submit|submit answers?|send answers?)$/i;
 const APPROVE_LABEL = /^(approve( plan)?|accept( plan)?|approve (and|&) build|build it|proceed)$/i;
 const ANSWER_BOX = /own answer|your answer|other answer/i;
 // In the running app: controls that could delete the user's data, cost money or send something
-// for real. Clicked only when the agent says the user agreed (confirm: true).
-const RISKY_IN_APP = /\b(delete|remove|erase|destroy|wipe|reset|pay|payment|purchase|buy|checkout|check out|unsubscribe|publish|deploy|send (an? )?(e-?mail|sms|text|invoice|payment))\b/i;
+// for real. Clicked (or submitted with Enter) only after the user clicks Allow in Scram Desktop's
+// own message, which the agent can't answer for them. Buttons with no name (just an icon) too,
+// since what they do can't be told.
+const RISKY_IN_APP =
+  /\b(delete|remove|erase|destroy|wipe|reset|refund|transfer|withdraw|pay|payment|purchase|buy|checkout|check out|subscribe|unsubscribe|invite|publish|deploy|send (an? |the )?(e-?mail|sms|text|invoice|payment|money|reminder|newsletter)|cancel (my |the |this )?(subscription|account|membership|plan|order|booking)|confirm (the )?(payment|purchase|deletion|delete|transfer|order))\b|🗑/i;
 const APP_AFTER_CHARS = 4000; // how much of the app's page to show after an action
 
 const norm = (t) => (t || "").replace(/\d+/g, "#");
@@ -83,10 +92,15 @@ function pickChoice(choices, label) {
 }
 
 export class ScramDriver {
-  constructor(page, { urls = scramUrls(), log = () => {} } = {}) {
+  // approve({ action, label }): asks the user (not the agent) whether the agent may do something
+  // risky in the running app; resolves to "allow", "allow-session" (and don't ask again),
+  // "deny" or "timeout". Without it, risky actions are refused.
+  constructor(page, { urls = scramUrls(), log = () => {}, approve = async () => "deny" } = {}) {
     this.page = page;
     this.urls = urls;
     this.log = log;
+    this.approve = approve;
+    this.riskyAllowed = false; // the user chose "don't ask again" (until Scram Desktop closes)
     this.busyWith = null; // what the driver is doing right now (one action at a time)
     this.baseline = null; // the chat's text just before our last message
     this.sent = ""; // our last message (left out of the reply)
@@ -202,7 +216,7 @@ export class ScramDriver {
     const out = [];
     const add = (c) => {
       const key = `${c.kind}:${c.label.toLowerCase()}`;
-      if (seen.has(key) || NOT_A_CHOICE.test(c.label) || NEVER_CLICK.test(c.label)) return;
+      if (seen.has(key) || NOT_A_CHOICE.test(c.label) || NEVER_CHOOSE.test(c.label)) return;
       seen.add(key);
       out.push(c);
     };
@@ -446,7 +460,7 @@ export class ScramDriver {
       await this.try("scrollChatToBottom");
       const before = (await this.try("chatReadable"))?.text || "";
       for (const label of labels) {
-        if (NEVER_CLICK.test(label)) throw new ScramError(`Not clicking “${label}”: Scram Desktop never clicks publish, delete, share, billing or log-out controls.`);
+        if (NEVER_CHOOSE.test(label)) throw new ScramError(`Not clicking “${label}”: Scram Desktop never clicks publish, delete-project, share, billing or log-out controls. Ask the user to do that in the Scram Desktop window.`);
         const choices = await this.choices();
         const c = pickChoice(choices, label);
         if (!c) {
@@ -526,6 +540,12 @@ export class ScramDriver {
     const a = answer.toLowerCase();
     const option = options.find((c) => c.label.toLowerCase() === a) || options.find((c) => c.label.toLowerCase().startsWith(a) && a.length >= 4);
     if (option) return this.choose({ ...opts, labels: [option.label] });
+    // Not by the back door either: writing out the title of an option that's never clicked
+    // (e.g. "Publish it now") would pick it all the same.
+    const blocked = ((await this.try("chatCards")) || []).find((c) => NEVER_CHOOSE.test(c.title) && squash(c.title).toLowerCase().startsWith(a.slice(0, 40)));
+    if (blocked) {
+      throw new ScramError(`Not answering “${squash(blocked.title)}”: Scram Desktop never clicks publish, delete-project, share, billing or log-out controls. Ask the user to do that in the Scram Desktop window.`);
+    }
     if (!(await this.answerBox()) && !pickChoice(choices, "write my own answer")) {
       throw new ScramError(
         `Scram isn't asking a question right now (no answer options or answer box in the chat). Choices right now: ${ScramDriver.describeChoices(choices).join(" · ") || "none"}`
@@ -679,6 +699,7 @@ export class ScramDriver {
         if (!this.urls.isEditor(url)) throw new ScramError("That isn't a Scram editor address (it should start with https://editor.buildwithscram.com/).");
         await this.page.navigate(url);
       } else if (name) {
+        if (NEVER_CLICK.test(name)) throw new ScramError(`“${name}” looks like one of Scram's controls, not a project name. Use scram_list_projects to see the projects.`);
         await this.goHome();
         const hits = (await this.dom("findText", `^${escapeRe(squash(name))}$`, { maxLen: 120 })) || [];
         if (!hits.length) throw new ScramError(`Couldn't find a project called “${name}” on Scram's dashboard. Use scram_list_projects to see what's there.`);
@@ -882,16 +903,32 @@ export class ScramDriver {
     });
   }
 
-  async clickApp({ ref, text, confirm = false } = {}) {
+  // Asks the user, in Scram Desktop, before something risky in the running app. Throws unless
+  // they clicked Allow.
+  async approveInApp(action, label) {
+    if (this.riskyAllowed) return;
+    this.log(`Asking the user before: ${action}.`);
+    const answer = await this.approve({ action, label });
+    if (answer === "allow-session") this.riskyAllowed = true;
+    if (answer === "allow" || answer === "allow-session") {
+      this.log(`The user allowed: ${action}.`);
+      return;
+    }
+    this.log(`Not done (the user ${answer === "timeout" ? "didn't answer" : "said no"}): ${action}.`);
+    throw new ScramError(
+      answer === "timeout"
+        ? `This could delete data, cost money or send something for real, so Scram Desktop asked the user first, and nobody answered in time. Nothing was clicked. Ask the user to watch for Scram Desktop's message and click Allow, then try again.`
+        : `This could delete data, cost money or send something for real, so Scram Desktop asked the user first, and they said no. Nothing was clicked. Don't try it again unless the user asks you to.`
+    );
+  }
+
+  async clickApp({ ref, text } = {}) {
     return this.exclusive("clicking in the running app", async () => {
       const frame = await this.appFrame();
       const { ref: r, target } = await this.appTarget(frame, { ref, text });
       const name = target.label || r;
-      if (RISKY_IN_APP.test(name) && !confirm) {
-        throw new ScramError(
-          `“${name}” could delete data, cost money or send something for real in the user's app. Ask the user first; if they agree, call scram_app_click again with confirm: true.`
-        );
-      }
+      if (!target.label?.trim()) await this.approveInApp(`click an unlabelled ${target.role || "button"} (just an icon) in your app`, "");
+      else if (RISKY_IN_APP.test(target.label)) await this.approveInApp(`click “${target.label}” in your app`, target.label);
       const at = await this.appPoint(frame, target, r);
       await this.page.trustedClick(at.x, at.y);
       this.log(`Clicked “${name}” in the running app.`);
@@ -942,7 +979,12 @@ export class ScramDriver {
         }
         how = "filled in";
       }
-      if (pressEnter) await this.page.trustedKey("Enter");
+      if (pressEnter) {
+        // Enter can submit the field's form: the same as clicking its submit button.
+        const submit = await this.appDom(frame, "submitLabelFor", r);
+        if (submit && RISKY_IN_APP.test(submit)) await this.approveInApp(`press Enter in “${name}”, which submits “${submit}” in your app`, submit);
+        await this.page.trustedKey("Enter");
+      }
       const shown = before.type === "password" ? `${text.length} characters` : `“${text.length > 80 ? `${text.slice(0, 80)}…` : text}”`;
       this.log(`Typed into “${name}” in the running app.`);
       return this.appAfter(`${how === "typed" ? "Typed" : "Filled in"} ${shown} ${clear ? "into" : "at the end of"} “${name}”${pressEnter ? ", then pressed Enter" : ""}.`);

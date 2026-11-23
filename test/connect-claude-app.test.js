@@ -25,6 +25,9 @@ import {
   windowsStartClaudeScript,
 } from "../src/connect-claude-app.js";
 import { connectorEntry, connectorNotePlaces, connectorStartedSince, CONNECTOR_NOTE, SERVER_NAME } from "../src/connector-link.js";
+import { isAppProcess } from "../src/apps.js";
+import { CLAUDE_APP } from "../src/connect-claude-app.js";
+import { CHATGPT_APP } from "../src/connect-chatgpt-app.js";
 
 const fresh = () => mkdtempSync(join(tmpdir(), "claude-config-test-"));
 const entry = connectorEntry({ execPath: "C:\\Program Files\\Scram Desktop\\Scram Desktop.exe", connectorPath: "C:\\x\\index.mjs", installed: true });
@@ -65,6 +68,25 @@ test("a Store Claude that has only its package folder counts as installed", () =
   const env = { APPDATA: join(home, "Roaming"), LOCALAPPDATA: join(home, "Local") };
   mkdirSync(join(home, "Local", "Packages", "Claude_pzs8sxrjxfjjc"), { recursive: true });
   assert.equal(claudeAppFound({ platform: "win32", env, home }), true);
+});
+
+test("on Windows, only processes that are certainly the app count (never Claude Code, never unknown ones)", () => {
+  const p = (path, commandLine = `"${path}"`) => ({ pid: 1, path, commandLine });
+  // The Claude desktop app: Store, normal installer, company-wide install, and its helpers.
+  assert.ok(isAppProcess(CLAUDE_APP, p("C:\\Program Files\\WindowsApps\\Claude_1.2.3.0_x64__pzs8sxrjxfjjc\\app\\claude.exe")));
+  assert.ok(isAppProcess(CLAUDE_APP, p("C:\\Users\\A\\AppData\\Local\\AnthropicClaude\\app-1.0.0\\claude.exe")));
+  assert.ok(isAppProcess(CLAUDE_APP, p("C:\\Program Files\\Claude\\claude.exe")));
+  assert.ok(isAppProcess(CLAUDE_APP, p("D:\\Apps\\Claude\\claude.exe", "claude.exe --type=renderer --user-data-dir=C:\\x")));
+  // Not the app: Claude Code (also claude.exe), anything else called claude.exe, and a process
+  // whose program can't be seen (e.g. running as administrator).
+  assert.ok(!isAppProcess(CLAUDE_APP, p("C:\\Users\\A\\.local\\bin\\claude.exe")));
+  assert.ok(!isAppProcess(CLAUDE_APP, p("C:\\Users\\A\\.local\\bin\\claude.exe", "claude.exe --type=x")));
+  assert.ok(!isAppProcess(CLAUDE_APP, p("C:\\Tools\\claude.exe")));
+  assert.ok(!isAppProcess(CLAUDE_APP, { pid: 1, path: "", commandLine: "" }));
+  // ChatGPT likewise.
+  assert.ok(isAppProcess(CHATGPT_APP, p("C:\\Program Files\\WindowsApps\\OpenAI.ChatGPT-Desktop_1.2026.0_x64__2p2nqsd0c76g0\\app\\ChatGPT.exe")));
+  assert.ok(!isAppProcess(CHATGPT_APP, p("C:\\Downloads\\ChatGPT.exe")));
+  assert.ok(!isAppProcess(CHATGPT_APP, { pid: 1, path: "", commandLine: "" }));
 });
 
 test("reads the settings folder off Claude's command line", () => {
@@ -116,6 +138,21 @@ test("adds Scram Desktop, keeps everything else, and backs up the old file once"
   assert.deepEqual(addToClaudeConfig([file], entry).unchanged, [file]);
 });
 
+test("renames an older Scram Desktop \"scram\" entry, but leaves anyone else's \"scram\" alone", () => {
+  const dir = fresh();
+  const ours = join(dir, "ours.json");
+  writeFileSync(ours, JSON.stringify({ mcpServers: { scram: { command: "x.exe", args: ["C:\\old\\resources\\claude-connector\\index.mjs"] } } }));
+  assert.deepEqual(addToClaudeConfig([ours], entry).changed, [ours]);
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(ours, "utf8")).mcpServers), [SERVER_NAME]);
+  assert.deepEqual(addToClaudeConfig([ours], entry).unchanged, [ours]);
+  const theirs = join(dir, "theirs.json");
+  writeFileSync(theirs, JSON.stringify({ mcpServers: { scram: { command: "npx", args: ["@scram/official-mcp"] } } }));
+  addToClaudeConfig([theirs], entry);
+  const servers = JSON.parse(readFileSync(theirs, "utf8")).mcpServers;
+  assert.deepEqual(servers.scram, { command: "npx", args: ["@scram/official-mcp"] });
+  assert.deepEqual(servers[SERVER_NAME], entry);
+});
+
 test("makes the file if Claude hasn't yet; skips a packaged-install folder that isn't there", () => {
   const dir = fresh();
   const main = join(dir, "Roaming", "Claude", "claude_desktop_config.json");
@@ -152,7 +189,7 @@ test("finds what Claude's own logs say about Scram Desktop, and the details to s
   const settingsDir = join(home, "Scram Desktop");
   const report = await claudeConnectionReport({ platform: "linux", env, home, settingsDir, version: "9.9.9", execPath: "/x/scram", connectorPath: "/x/index.mjs" });
   assert.match(report, /Scram Desktop 9\.9\.9/);
-  assert.match(report, /has scram: .*ELECTRON_RUN_AS_NODE.*servers: github, scram/);
+  assert.match(report, /has scram-desktop: .*ELECTRON_RUN_AS_NODE.*servers: github, scram-desktop/);
   assert.match(report, /spawn EPERM/);
   assert.doesNotMatch(report, /ghp_secret123|GITHUB_TOKEN/);
 });
@@ -179,12 +216,13 @@ test("the PowerShell that finds and reopens Claude on Windows is valid", { skip:
 
 test("on Windows, finds the Claude app's settings folder from its command line, and quits only the Claude app", { skip: process.platform !== "win32" && "Windows only", timeout: 90000 }, async () => {
   // Stand-ins: Node.js copied as claude.exe. One is "the Claude app", started with a settings
-  // folder (with a space in it) on its command line; the other is where Claude Code lives
-  // (~\.local\bin\claude.exe), and must never be closed.
+  // folder (with a space in it) on its command line; one is where Claude Code lives
+  // (~\.local\bin\claude.exe); one is some other claude.exe. Those two must never be closed.
   const dir = fresh();
   const appExe = join(dir, "WindowsApps", "Claude_1.0.0.0_x64__pzs8sxrjxfjjc", "app", "claude.exe");
   const codeExe = join(dir, ".local", "bin", "claude.exe");
-  for (const exe of [appExe, codeExe]) {
+  const otherExe = join(dir, "tools", "claude.exe");
+  for (const exe of [appExe, codeExe, otherExe]) {
     mkdirSync(dirname(exe), { recursive: true });
     copyFile(process.execPath, exe);
   }
@@ -192,6 +230,7 @@ test("on Windows, finds the Claude app's settings folder from its command line, 
   const keepAlive = "setTimeout(() => {}, 60000)";
   const fakeApp = spawn(appExe, ["-e", keepAlive, "--", `--user-data-dir=${dataDir}`], { stdio: "ignore" });
   const fakeCode = spawn(codeExe, ["-e", keepAlive], { stdio: "ignore" });
+  const fakeOther = spawn(otherExe, ["-e", keepAlive], { stdio: "ignore" });
   const exited = (child) => new Promise((r) => (child.exitCode !== null || child.signalCode !== null ? r() : child.once("exit", r)));
   try {
     await new Promise((r) => setTimeout(r, 1500));
@@ -202,9 +241,11 @@ test("on Windows, finds the Claude app's settings folder from its command line, 
     assert.equal(await quitClaude("win32"), true);
     await exited(fakeApp);
     assert.equal(fakeCode.exitCode, null, "Claude Code is still running");
+    assert.equal(fakeOther.exitCode, null, "the other claude.exe is still running");
     assert.equal(await claudeRunning("win32"), false);
   } finally {
     fakeApp.kill();
     fakeCode.kill();
+    fakeOther.kill();
   }
 });

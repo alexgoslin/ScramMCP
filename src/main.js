@@ -32,6 +32,7 @@ import { ScramDriver } from "./scram/driver.js";
 import { electronPage } from "./scram/electron-page.js";
 import { scramUrls } from "./scram/urls.js";
 import { startMcpHttp } from "./mcp/http.js";
+import { popupAllowed } from "./popups.js";
 import { createScramMcpServer } from "./mcp/tools.js";
 
 const APP_NAME = "Scram Desktop";
@@ -105,10 +106,45 @@ function updateTitle() {
   win.setTitle(`${busy ? "● Agent working — " : ""}${pageTitle} — ${APP_NAME} (${server})`);
 }
 
-const isAuthPopup = (url) =>
-  url === "about:blank" ||
-  /^https:\/\/(accounts\.google\.com|login\.microsoftonline\.com|login\.live\.com|github\.com\/login|appleid\.apple\.com|[^/]*\.auth0\.com|[^/]*clerk\.[^/]+|[^/]*\.okta\.com)\//i.test(url) ||
-  /\/(oauth2?|authorize|sso|signin|sign-in|login)\b/i.test(new URL(url, "https://x").pathname);
+// Sign-in windows. Scram Desktop's windows have no address bar, so a page that opened a window
+// that only looked like a sign-in page could fish for a password. So a window opens here only
+// for a known sign-in provider, or for another sign-in page when Scram's own page opened it (not
+// the app in the Run preview, or any page that hides where it came from). Everything else opens
+// in the person's browser, which shows the address. Sign-in windows show their site in the title.
+// What a window does with a link that opens a new one (the main window, and sign-in windows too).
+function windowOpenHandler(owner) {
+  return ({ url, referrer }) => {
+    if (urls.isScram(url)) {
+      (win && !win.isDestroyed() ? win : owner).loadURL(url);
+      return { action: "deny" };
+    }
+    if (popupAllowed(url, referrer?.url || "", urls.isScram)) return { action: "allow" };
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    return { action: "deny" };
+  };
+}
+
+// A sign-in window: the same rules for links in it, and its site always in its title.
+function watchSignInWindow(child) {
+  child.webContents.setWindowOpenHandler(windowOpenHandler(child));
+  const showSite = () => {
+    if (child.isDestroyed()) return;
+    let site = "";
+    try {
+      site = new URL(child.webContents.getURL()).host;
+    } catch {
+      /* blank */
+    }
+    child.setTitle(site ? `${site} — sign-in window` : "Sign-in window");
+  };
+  child.on("page-title-updated", (e) => {
+    e.preventDefault();
+    showSite();
+  });
+  child.webContents.on("did-navigate", showSite);
+  child.webContents.on("did-navigate-in-page", showSite);
+  showSite();
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -126,17 +162,11 @@ function createWindow() {
     },
   });
 
-  // Links that open a new window: Scram's own pages load here; sign-in popups open as popups;
-  // anything else (e.g. the running app's preview link, Scram's manual) opens in your browser.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (urls.isScram(url)) {
-      win.loadURL(url);
-      return { action: "deny" };
-    }
-    if (isAuthPopup(url)) return { action: "allow" };
-    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
-    return { action: "deny" };
-  });
+  // Links that open a new window: Scram's own pages load here; sign-in windows open as windows
+  // (see popupAllowed); anything else (e.g. the running app's preview link, Scram's manual)
+  // opens in your browser.
+  win.webContents.setWindowOpenHandler(windowOpenHandler(win));
+  win.webContents.on("did-create-window", watchSignInWindow);
 
   win.on("page-title-updated", (e, title) => {
     e.preventDefault();
@@ -206,7 +236,7 @@ async function connectClaudeApp() {
   const quit = process.platform === "darwin" ? "Claude menu \u2192 Quit Claude" : "right-click its icon by the clock \u2192 Quit";
   const done = "Start a new chat in Claude and ask it to do something in Scram, for example \u201cUse Scram to add a contact page to my project\u201d. Keep this window open while Claude works in Scram.";
 
-  const running = await claudeRunning();
+  const running = (await claudeRunning()) !== false; // (or can't tell: then asked to restart it)
   const { response } = await dialog.showMessageBox(win, {
     type: "question",
     message: "Connect the Claude desktop app",
@@ -319,13 +349,13 @@ async function connectChatGPTApp() {
   const quit = process.platform === "darwin" ? "ChatGPT menu \u2192 Quit ChatGPT" : "right-click its icon by the clock \u2192 Quit, if it's there";
   const done = "Start a new chat in ChatGPT and ask it to do something in Scram, for example \u201cUse Scram to add a contact page to my project\u201d. Keep this window open while ChatGPT works in Scram.";
 
-  const running = await chatgptRunning();
+  const running = (await chatgptRunning()) !== false;
   const { response } = await dialog.showMessageBox(win, {
     type: "question",
     message: "Connect the ChatGPT desktop app",
     detail: running
-      ? "ChatGPT only picks up Scram Desktop when it starts, so Scram Desktop restarts it: ChatGPT closes and opens again (anything you're typing in ChatGPT is lost)."
-      : "Scram Desktop opens the ChatGPT app and connects it.",
+      ? "ChatGPT only picks up Scram Desktop when it starts, so Scram Desktop restarts it: ChatGPT closes and opens again (anything you're typing in ChatGPT is lost). OpenAI's Codex reads the same settings, so it gets Scram too."
+      : "Scram Desktop opens the ChatGPT app and connects it. (OpenAI's Codex reads the same settings, so it gets Scram too.)",
     buttons: [running ? "Restart ChatGPT and connect" : "Open ChatGPT and connect", "Later"],
     defaultId: 0,
     cancelId: 1,
@@ -559,6 +589,41 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// Before the agent does something risky in the running app (Run mode), ask the person, in Scram
+// Desktop's own window, which the agent can't answer. Brought to the front (it's usually behind the
+// AI app). No answer within 45 seconds counts as no: the AI apps give up on a tool call after
+// about a minute. (SCRAM_MCP_TEST_APPROVALS=allow|deny answers at once, for the tests.)
+async function askToAllow({ action }) {
+  const test = process.env.SCRAM_MCP_TEST_APPROVALS;
+  if (test) return test === "allow" ? "allow" : "deny";
+  if (!win || win.isDestroyed()) return "deny";
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  if (process.platform === "darwin") app.focus({ steal: true });
+  win.flashFrame(true);
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), 45000);
+  try {
+    const { response, checkboxChecked } = await dialog.showMessageBox(win, {
+      type: "warning",
+      message: `Allow the AI to ${action}?`,
+      detail:
+        "It's testing the app it's building, in Scram's Run mode. This looks like it could delete data, cost money or send something for real, so Scram Desktop is checking with you first.",
+      buttons: ["Allow", "Don't allow"],
+      defaultId: 1,
+      cancelId: 1,
+      checkboxLabel: "Don't ask again until Scram Desktop is closed",
+      signal: stop.signal,
+    });
+    if (stop.signal.aborted) return "timeout";
+    return response === 0 ? (checkboxChecked ? "allow-session" : "allow") : "deny";
+  } finally {
+    clearTimeout(timer);
+    if (win && !win.isDestroyed()) win.flashFrame(false);
+  }
+}
+
 async function startServer(driver) {
   try {
     mcp = await startMcpHttp({
@@ -608,7 +673,7 @@ app.whenReady().then(async () => {
 
   buildMenu();
   createWindow();
-  const driver = new ScramDriver(electronPage(() => win), { urls, log });
+  const driver = new ScramDriver(electronPage(() => win), { urls, log, approve: askToAllow });
   await startServer(driver);
 
   if (!config.welcomed && mcp && !process.env.SCRAM_MCP_NO_WELCOME) {
