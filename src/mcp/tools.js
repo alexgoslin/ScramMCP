@@ -1,21 +1,43 @@
 // The MCP tools: what an agent (Claude Code, Cursor…) sees and can call. Each one is a thin
 // wrapper around the Scram driver.
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
 import { Autopilot } from "../scram/autopilot.js";
+import { batchesOf, batchMessage, Briefs } from "../scram/briefs.js";
 import { ScramDriver, ScramError } from "../scram/driver.js";
+import { checkTheme, themeDocument, themeExamples, themeNotes } from "../scram/themes.js";
 import { INSTRUCTIONS } from "./instructions.js";
 
-// Scram know-how for the agent (from RoboBuild's guides, src/guides/*.md), read on request.
+// Scram know-how for the agent, read on request: from RoboBuild's guides, plus TypeScript briefs,
+// themes and UI rules (src/guides/).
 const GUIDES = {
   building: "How to build with Scram and its bot: what Scram is, a tour of the editor, getting the best results from the bot, testing, and when an app is done.",
   platform: "What Scram can and can't build (its building blocks, current limits, gotchas, social login).",
   planning: "How to split a build into small, testable steps, and write each as a complete work order (also: writing a plan for scram_autopilot_start).",
+  briefs: "For BIG requests only: writing them as a staged TypeScript brief, sent one batch at a time (scram_brief), and what Scram does that a brief should anticipate.",
+  brief_template: "The TypeScript brief template to start a brief from.",
+  themes: "Themes: the questions to ask the user first (vibe, boldness, must-haves), Scram's theme rules, the six example themes, and sending one (scram_send_theme).",
+  theme_examples: "The six example themes and the theme template, as TypeScript files.",
   design: "How to give an app its own distinctive, art-directed design.",
+  ui_quality: "UI rules for the screens Scram builds: the quality gate (scope, and evidence before calling a screen finished), craft, and consistency.",
 };
-const guide = (topic) => readFileSync(new URL(`../guides/${topic}.md`, import.meta.url), "utf8");
+const asset = (path) => readFileSync(new URL(`../guides/${path}`, import.meta.url), "utf8");
+const typescriptFiles = (pick) =>
+  readdirSync(new URL("../guides/typescript/", import.meta.url))
+    .filter(pick)
+    .sort()
+    .map((f) => `// ===== ${f} =====\n${asset(`typescript/${f}`)}`)
+    .join("\n\n");
+const guide = (topic) =>
+  ({
+    brief_template: () => asset("typescript/brief-template.ts"),
+    theme_examples: () => typescriptFiles((f) => /^theme-/.test(f)),
+    ui_quality: () => asset("ui-quality.md"),
+  })[topic]?.() ?? asset(`${topic}.md`);
 
 
 
@@ -73,7 +95,7 @@ function guard(name, activity, fn) {
   };
 }
 
-export function createScramMcpServer(driver, { version = "0.1.0", activity, autopilot = new Autopilot(driver) } = {}) {
+export function createScramMcpServer(driver, { version = "0.1.0", activity, autopilot = new Autopilot(driver), briefs = new Briefs(join(tmpdir(), "scram-desktop-briefs")) } = {}) {
   const server = new McpServer({ name: "scram", title: "Scram", version }, { instructions: INSTRUCTIONS });
   const readOnly = { readOnlyHint: true, openWorldHint: false };
   const acts = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
@@ -342,6 +364,94 @@ export function createScramMcpServer(driver, { version = "0.1.0", activity, auto
     guard("scram_guide", activity, async ({ topic }) => text(guide(topic || "building")))
   );
 
+  // Themes, written as the exact call Scram's theme tool makes.
+  const examples = themeExamples();
+  server.registerTool(
+    "scram_send_theme",
+    {
+      title: "Make a theme in Scram",
+      description:
+        'Make (or update) a theme in the open Scram project and apply it to the app. Ask the user the theme questions first unless they\'ve said what they want (scram_guide topic "themes"). Give either one of the example themes, or your own theme: the createTheme payload of Scram\'s theme tool. It\'s checked against Scram\'s theme schema first (any problem is listed, and nothing is sent), then written as a TypeScript document (the exact manageThemes call) and sent to Scram\'s bot, which creates it, applies it and reads back what it stored. Then check the "Done when" line in Run mode.',
+      inputSchema: z.object({
+        example: z.enum(Object.keys(examples)).optional().describe(`One of the example themes: ${Object.entries(examples).map(([k, v]) => `"${k}" (${v.theme.themeName}: ${v.theme.colorSchemeMode})`).join(", ")}.`),
+        theme: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe(
+            "Or your own theme: { themeName, description, baseColors: { primary, secondary, neutral, success, alert, error } (#RRGGBB), colorShadeOverrides?: { role: { shade: hex } }, fonts?: { heading, body } (Google Font names), spacing? 0-9, textSize? 0-9, roundness? 0-9, border? 0-4, size? 0-4, iconLibrary: feather|hero-outline|hero-solid|lucide, colorSchemeMode: light-only|dark-only|switchable }."
+          ),
+        done_when: z.string().optional().describe('For your own theme: one line a person can check by eye in Run mode, e.g. "the page is cream #F9F4EC and a test button is ink #26252C with 8 px corners".'),
+        wait_seconds: waitSeconds,
+      }),
+      annotations: acts,
+    },
+    guard("scram_send_theme", activity, async ({ example, theme, done_when, wait_seconds }, ctx) => {
+      let doc;
+      let notes = [];
+      let doneWhen;
+      if (example) {
+        // The example's own file (with its extra notes for the bot).
+        const ex = examples[example];
+        doc = asset(`typescript/${ex.file}`);
+        doneWhen = ex.doneWhen;
+        notes = themeNotes(ex.theme);
+      } else {
+        if (!theme) throw new ScramError("Give an example theme, or your own theme.");
+        const { theme: checked, problems } = checkTheme(theme);
+        if (problems.length) throw new ScramError(`The theme wasn't sent: it doesn't fit Scram's theme schema.\n- ${problems.join("\n- ")}\nFix these and try again (scram_guide topic "themes" has the rules).`);
+        if (!done_when?.trim()) throw new ScramError('Add a "done_when" line: what a person will see in Run mode when the theme is right (exact colours, corners, sizes).');
+        doc = themeDocument(checked, done_when);
+        doneWhen = done_when.trim();
+        notes = themeNotes(checked);
+      }
+      const reply = describeReply(await driver.sendMessage(doc, { waitMs: (wait_seconds ?? 300) * 1000, ...waiting(ctx) }));
+      const after = [`Done when: ${doneWhen}`, "Check that in Run mode (scram_run_mode, then scram_screenshot area \"app_preview\"), not in the editor preview.", ...notes];
+      return text(`${reply.content[0].text}\n\n${after.join("\n")}`);
+    })
+  );
+
+  // TypeScript briefs: for big requests only (scram_guide topic "briefs").
+  server.registerTool(
+    "scram_brief",
+    {
+      title: "TypeScript briefs (big requests only)",
+      description:
+        'For BIG requests only (a whole app, or a feature with several tables, pages or integrations): keep a staged TypeScript brief in Scram Desktop and send it to Scram\'s bot one batch at a time. Small requests go as plain messages with scram_send_message. Read scram_guide topics "briefs" and "brief_template" first. Actions: "save" (name, content: the whole brief, with "// BATCH n — title" sections, each with "// Done when:"), "read" (name), "list", "send_batch" (name, batch number, optional preamble: answers to the bot\'s questions, fixes to make first): sends the brief\'s conventions plus that batch and waits for the bot. After each batch, add an "// AS BUILT" block and save the brief again.',
+      inputSchema: z.object({
+        action: z.enum(["save", "read", "list", "send_batch"]),
+        name: z.string().optional().describe('The brief\'s name, e.g. "bakery-orders".'),
+        content: z.string().optional().describe("For save: the whole brief."),
+        batch: z.number().int().min(0).optional().describe("For send_batch: the batch number."),
+        preamble: z.string().optional().describe("For send_batch: what to say before the batch (answers to the bot's questions from the last batch, fixes to make first)."),
+        wait_seconds: waitSeconds,
+      }),
+      annotations: acts,
+    },
+    guard("scram_brief", activity, async ({ action, name, content, batch, preamble, wait_seconds }, ctx) => {
+      const batchList = (all) => all.map((b) => `- Batch ${b.n}: ${b.title}${b.doneWhen ? `\n  Done when: ${b.doneWhen}` : ""}`).join("\n");
+      if (action === "list") {
+        const all = briefs.list();
+        return text(all.length ? all.map((b) => `${b.name} (saved ${b.changed}): batches ${b.batches.join(" · ") || "none"}`).join("\n") : "No briefs saved yet.");
+      }
+      if (!name) throw new ScramError("Give the brief's name.");
+      if (action === "read") return text(briefs.read(name));
+      if (action === "save") {
+        const saved = briefs.save(name, content);
+        return text(
+          saved.batches.length
+            ? `Saved the brief “${saved.name}” in Scram Desktop. Its batches:\n${batchList(saved.batches)}\n\nSend one at a time with action "send_batch".`
+            : `Saved the brief “${saved.name}”, but it has no batches: mark each one with a "// BATCH n — title" header and a "// Done when:" line (see scram_guide topic "brief_template").`
+        );
+      }
+      if (batch === undefined) throw new ScramError("Say which batch to send (its number).");
+      const { text: brief, batch: b } = briefs.batch(name, batch);
+      const reply = describeReply(await driver.sendMessage(batchMessage(brief, b, preamble), { waitMs: (wait_seconds ?? 300) * 1000, ...waiting(ctx) }));
+      return text(
+        `${reply.content[0].text}\n\nSent batch ${b.n} (“${b.title}”) of the brief “${name}”.${b.doneWhen ? ` Done when: ${b.doneWhen}` : ""}\nWhen the bot has finished: check the Done-when line in Run mode, then add an "// AS BUILT (batch ${b.n}):" block and a BUILD LOG row to the brief and save it.`
+      );
+    })
+  );
+
   // The autopilot: a hands-off build of a whole plan. Only when the user asks for it.
   server.registerTool(
     "scram_autopilot_start",
@@ -354,16 +464,27 @@ export function createScramMcpServer(driver, { version = "0.1.0", activity, auto
           .array(z.object({ title: z.string().min(1).describe("A short title, e.g. \"Setup\" or \"Orders list\"."), request: z.string().min(1).describe("The full work order for Scram's bot for this step.") }))
           .min(1)
           .max(40)
+          .optional()
           .describe("The plan, in build order."),
+        brief: z.string().optional().describe("Or the name of a saved TypeScript brief (scram_brief): its batches are the steps."),
+        from_batch: z.number().int().min(0).optional().describe("With brief: start from this batch (default: the first)."),
         new_project_name: z.string().optional().describe("Build in a new project with this name. Leave out to build in the project that's open."),
         test_each_step: z.boolean().optional().describe("Have Scram's bot test each step in Run mode (default true)."),
         check_layout: z.boolean().optional().describe("Run the layout check after each step and send problems to the bot (default true)."),
       }),
       annotations: acts,
     },
-    guard("scram_autopilot_start", activity, async ({ steps, new_project_name, test_each_step, check_layout }) =>
-      text(await autopilot.start({ steps, projectName: new_project_name || "", test: test_each_step ?? true, checkLayout: check_layout ?? true }))
-    )
+    guard("scram_autopilot_start", activity, async ({ steps, brief, from_batch, new_project_name, test_each_step, check_layout }) => {
+      if (brief) {
+        const doc = briefs.read(brief);
+        steps = batchesOf(doc)
+          .filter((b) => from_batch === undefined || b.n >= from_batch)
+          .map((b) => ({ title: `Batch ${b.n}: ${b.title}`, request: batchMessage(doc, b) }));
+        if (!steps.length) throw new ScramError(`The brief “${brief}” has no batches${from_batch !== undefined ? ` from batch ${from_batch} on` : ""}.`);
+      }
+      if (!steps?.length) throw new ScramError("Give the autopilot a plan: steps, or the name of a saved brief.");
+      return text(await autopilot.start({ steps, projectName: new_project_name || "", test: test_each_step ?? true, checkLayout: check_layout ?? true }));
+    })
   );
 
   server.registerTool(

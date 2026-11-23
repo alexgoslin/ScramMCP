@@ -2,7 +2,7 @@
 // this computer (Claude Code, Cursor…) work in it through Scram's own AI chat.
 
 import { app, BrowserWindow, Menu, Notification, clipboard, dialog, powerSaveBlocker, shell, session } from "electron";
-import { appendFileSync, cpSync, existsSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig, connectInfo, newToken } from "./config.js";
 import { connectClaudeCode } from "./connect-claude.js";
@@ -30,6 +30,7 @@ import {
 import { connectorEntry, connectorNotePlaces, waitForConnector } from "./connector-link.js";
 import { ScramDriver } from "./scram/driver.js";
 import { Autopilot } from "./scram/autopilot.js";
+import { Briefs } from "./scram/briefs.js";
 import { electronPage } from "./scram/electron-page.js";
 import { scramUrls } from "./scram/urls.js";
 import { startMcpHttp } from "./mcp/http.js";
@@ -77,6 +78,7 @@ let win = null;
 let mcp = null;
 let busy = 0;
 let autopilot = null;
+let briefs = null; // TypeScript briefs for big requests, kept in <settings>/briefs
 let pageTitle = "Scram";
 let config, saveConfig;
 
@@ -647,6 +649,14 @@ function buildMenu() {
         { label: "Go to Scram dashboard", click: () => win?.loadURL(urls.home) },
         { label: "Show log file", click: () => shell.showItemInFolder(join(app.getPath("userData"), "scram-desktop.log")) },
         { label: "Copy connection details (for the Scram team)", click: copyConnectionDetails },
+        {
+          label: "Show saved briefs",
+          click: () => {
+            const dir = join(app.getPath("userData"), "briefs");
+            mkdirSync(dir, { recursive: true });
+            shell.openPath(dir);
+          },
+        },
         { type: "separator" },
         { label: "Stop autopilot", click: stopAutopilot },
         { label: "Resume autopilot", click: resumeAutopilot },
@@ -713,6 +723,7 @@ async function startServer(driver) {
         createScramMcpServer(driver, {
           version: app.getVersion(),
           autopilot,
+          briefs,
           activity: (tool, started) => {
             busy = Math.max(0, busy + (started ? 1 : -1));
             if (started) log(`Agent called ${tool}.`);
@@ -754,6 +765,7 @@ app.whenReady().then(async () => {
   buildMenu();
   createWindow();
   const driver = new ScramDriver(electronPage(() => win), { urls, log, approve: askToAllow });
+  briefs = new Briefs(join(app.getPath("userData"), "briefs"));
   autopilot = new Autopilot(driver, {
     log,
     confirmStart: askToStartAutopilot,

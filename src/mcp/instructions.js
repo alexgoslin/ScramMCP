@@ -3,7 +3,12 @@
 
 export const INSTRUCTIONS = `Scram Desktop drives Scram (an AI app builder) through Scram's own AI chat, in a desktop window on the user's computer that is logged in as the user.
 
-How to build something (before anything substantial, read scram_guide: topic "building", and "planning" for anything bigger than one change; word requests to Scram's bot in Scram's terms):
+How to build something (before anything substantial, read scram_guide: topic "building", and "planning" for anything bigger than one change; word requests to Scram's bot in Scram's terms). Size the request first:
+- Small or medium (a field, a page tweak, a bug, one feature): a plain message with scram_send_message.
+- BIG (a whole app, or a feature with several tables, pages or integrations): write a staged TypeScript brief (scram_guide topics "briefs" and "brief_template"), save it with scram_brief, and send it one batch at a time. Only use TypeScript when the request is big.
+- Themes: unless the user has said what they want, ask them the theme questions first (scram_guide topic "themes": vibe, boldness, must-haves), then make it with scram_send_theme (an example theme, or your own, checked against Scram's theme schema).
+- UI: follow the UI quality rules (scram_guide topic "ui_quality").
+Then:
 1. scram_status to see where the window is. If no project is open, use scram_open_project, scram_new_project or scram_list_projects.
 2. scram_send_message with a clear request for Scram's bot (what to build or change). It waits for the bot and returns its reply.
 3. The bot usually proposes a plan first and waits for approval: use scram_approve_plan (or reply with corrections via scram_send_message). When the bot asks a question, answer it with scram_answer_question (an option's title, or your own words).

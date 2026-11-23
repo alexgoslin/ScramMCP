@@ -18,6 +18,11 @@ Windows may say "Windows protected your PC", because the installer isn't code-si
 
 **New in 0.5.0: Claude (or ChatGPT) can test the app it builds.** In Run mode, it reads the app's pages, fills in forms, clicks buttons and links, and checks the result, then tells Scram's bot about anything that doesn't work. Try: *"Using Scram, test the order form and fix anything that doesn't work."* It asks you first before clicking anything that could delete data, cost money or send something for real.
 
+**New in 0.7.0** (from the RoboBuild extension):
+- **Theme questions.** Before making a theme, Claude asks what vibe you want, how bold, and any must-haves, then makes it with **Scram's real theme rules checked first**: six ready-made themes (Scram, Ledger, Midnight, Atelier, Playground, Clinic), or its own.
+- **Big requests in stages.** For a whole app or a large feature, Claude writes a staged **TypeScript brief**, which Scram Desktop keeps for you (Scram Desktop menu → Show saved briefs), and sends it to Scram's bot one batch at a time. Small requests stay plain messages. The autopilot can build a whole brief.
+- **UI quality rules** for every screen.
+
 **New in 0.6.0:**
 - **Scram know-how.** Claude (or ChatGPT) can read Scram guides before building: how to get the best from Scram's bot, what Scram can and can't do, planning a build in steps, and design.
 - **Automatic layout check** of the running app: menus off screen, things shown twice, overlapping or cut-off text, broken images, hard-to-read text, sideways scrolling.

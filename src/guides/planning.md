@@ -51,6 +51,14 @@ server), database tables and fields, the theme. Ask for real, working behaviour 
 database, not placeholder or hardcoded data. If something needs a secret (an API key, a
 payment account), say so in the step, and expect to need the user for it.
 
+## For big builds: a TypeScript brief
+
+When the build is big (a whole app, or a feature with several tables, pages or integrations),
+write the steps as **batches of a staged TypeScript brief** (scram_guide topics "briefs" and
+"brief_template"): the same ideas as above, in a form Scram's bot reads very precisely. Batch 0
+is the theme (scram_send_theme). Save it with scram_brief and send one batch at a time. Smaller
+requests stay plain English.
+
 ## 4. Mind the cost
 
 Every message uses the user's Scram credits. Fewer, well-written steps cost less than many
@@ -65,7 +73,8 @@ yourself too (scram_app_read, scram_app_click, scram_app_type, scram_app_check_l
 ## Writing a plan for scram_autopilot_start
 
 Only when the user asks for autopilot (a hands-off build). Give it the steps in order, each
-with a short title and the full work order as its request (as above). The autopilot sends each
+with a short title and the full work order as its request (as above), or the name of a saved
+TypeScript brief: its batches become the steps. The autopilot sends each
 step, approves the bot's plans, answers its questions with sensible defaults, asks the bot to
 test every step in Run mode, runs the layout check, and pauses if it needs the user (a secret,
 a payment, the bot stuck). Steps that are vague get vague results: the autopilot can't add the

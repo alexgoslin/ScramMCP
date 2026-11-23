@@ -1,0 +1,242 @@
+{
+  "theme-1-scram": {
+    "file": "theme-1-scram.ts",
+    "doneWhen": "the page is cream #F9F4EC with white cards, and a test button is ink #26252C with a near-white label and 8 px corners.",
+    "theme": {
+      "id": "scram",
+      "themeName": "Scram",
+      "description": "Matches scram.com (computed styles from the live site): warm cream page, near-black ink buttons, teal accents, lime and peach highlights.",
+      "baseColors": {
+        "primary": "#26252C",
+        "secondary": "#468D80",
+        "neutral": "#8A8A8A",
+        "success": "#097E00",
+        "alert": "#D99A3D",
+        "error": "#C93C3C"
+      },
+      "colorShadeOverrides": {
+        "primary": {
+          "800": "#26252C"
+        },
+        "secondary": {
+          "500": "#468D80"
+        },
+        "neutral": {
+          "50": "#F9F4EC",
+          "100": "#FFFFFF"
+        },
+        "custom1": {
+          "500": "#EBF5B4"
+        },
+        "custom2": {
+          "500": "#F8D3A5"
+        }
+      },
+      "fonts": {
+        "heading": "Archivo",
+        "body": "Inter"
+      },
+      "border": 1,
+      "roundness": 4,
+      "iconLibrary": "lucide",
+      "colorSchemeMode": "light-only",
+      "reasoning": "Theme from the Scram theme set (v3)"
+    }
+  },
+  "theme-2-ledger": {
+    "file": "theme-2-ledger.ts",
+    "doneWhen": "a test button is blue #1D4ED8 with 4 px corners, and spacing is visibly tighter than the platform default.",
+    "theme": {
+      "id": "ledger",
+      "themeName": "Ledger",
+      "description": "Dense, sober finance and back-office: cool slate, one confident blue, tight corners, compact spacing.",
+      "baseColors": {
+        "primary": "#1D4ED8",
+        "secondary": "#475569",
+        "neutral": "#64748B",
+        "success": "#047857",
+        "alert": "#B45309",
+        "error": "#B91C1C"
+      },
+      "colorShadeOverrides": {
+        "primary": {
+          "800": "#1D4ED8"
+        },
+        "custom1": {
+          "500": "#6D28D9"
+        },
+        "custom2": {
+          "500": "#0E7490"
+        }
+      },
+      "fonts": {
+        "heading": "IBM Plex Sans",
+        "body": "IBM Plex Sans"
+      },
+      "spacing": 2,
+      "textSize": 2,
+      "border": 1,
+      "roundness": 3,
+      "iconLibrary": "lucide",
+      "colorSchemeMode": "light-only",
+      "reasoning": "Theme from the Scram theme set (v3)"
+    }
+  },
+  "theme-3-midnight": {
+    "file": "theme-3-midnight.ts",
+    "doneWhen": "the page is near-black with near-white text, and solid buttons are violet with a label that reads clearly (report the two hexes and their contrast).",
+    "theme": {
+      "id": "midnight",
+      "themeName": "Midnight",
+      "description": "Dark developer tool: near-black, electric violet, cyan and lime accents.",
+      "baseColors": {
+        "primary": "#8B5CF6",
+        "secondary": "#22D3EE",
+        "neutral": "#71717A",
+        "success": "#A3E635",
+        "alert": "#FBBF24",
+        "error": "#F87171"
+      },
+      "colorShadeOverrides": {
+        "primary": {
+          "500": "#8B5CF6"
+        },
+        "custom1": {
+          "500": "#F472B6"
+        }
+      },
+      "fonts": {
+        "heading": "Space Grotesk",
+        "body": "Inter"
+      },
+      "border": 2,
+      "roundness": 5,
+      "iconLibrary": "lucide",
+      "colorSchemeMode": "dark-only",
+      "reasoning": "Theme from the Scram theme set (v3)"
+    }
+  },
+  "theme-4-atelier": {
+    "file": "theme-4-atelier.ts",
+    "doneWhen": "the page is paper #FBF8F3, a test button is oxblood #7A1F2B with 1 px corners, and headings are visibly larger than the platform default.",
+    "theme": {
+      "id": "atelier",
+      "themeName": "Atelier",
+      "description": "Editorial, magazine look: warm paper, black ink, an oxblood accent, a high-contrast serif, near-square corners.",
+      "baseColors": {
+        "primary": "#7A1F2B",
+        "secondary": "#4F6D7A",
+        "neutral": "#7A7266",
+        "success": "#3F6B3A",
+        "alert": "#B7832F",
+        "error": "#A1271B"
+      },
+      "colorShadeOverrides": {
+        "primary": {
+          "800": "#7A1F2B"
+        },
+        "neutral": {
+          "50": "#FBF8F3"
+        }
+      },
+      "fonts": {
+        "heading": "Fraunces",
+        "body": "Libre Franklin"
+      },
+      "spacing": 6,
+      "textSize": 6,
+      "border": 1,
+      "roundness": 0,
+      "iconLibrary": "lucide",
+      "colorSchemeMode": "light-only",
+      "reasoning": "Theme from the Scram theme set (v3)"
+    }
+  },
+  "theme-5-playground": {
+    "file": "theme-5-playground.ts",
+    "doneWhen": "a test button is coral #C8323A with a light label and 14 px corners; cards have 20 px corners; switching the device to dark mode gives a dark page.",
+    "theme": {
+      "id": "playground",
+      "themeName": "Playground",
+      "description": "Bright, friendly consumer look: coral and sunflower on cream, rounded type, the roundest corners and thickest borders available.",
+      "baseColors": {
+        "primary": "#FF5A5F",
+        "secondary": "#FFC93C",
+        "neutral": "#6B6478",
+        "success": "#2BB673",
+        "alert": "#FF9F1C",
+        "error": "#E63946"
+      },
+      "colorShadeOverrides": {
+        "primary": {
+          "500": "#FF5A5F",
+          "800": "#C8323A"
+        },
+        "neutral": {
+          "50": "#FFFBF5"
+        },
+        "custom1": {
+          "500": "#4CC9F0"
+        },
+        "custom2": {
+          "500": "#9B5DE5"
+        }
+      },
+      "fonts": {
+        "heading": "Fredoka",
+        "body": "Nunito"
+      },
+      "spacing": 4,
+      "textSize": 5,
+      "border": 4,
+      "roundness": 9,
+      "iconLibrary": "lucide",
+      "colorSchemeMode": "switchable",
+      "reasoning": "Theme from the Scram theme set (v3)"
+    }
+  },
+  "theme-6-clinic": {
+    "file": "theme-6-clinic.ts",
+    "doneWhen": "body text renders at 18 px, a test button is teal #0F766E with a light label, and every 700 step reaches 4.5:1 on white.",
+    "theme": {
+      "id": "clinic",
+      "themeName": "Clinic",
+      "description": "Accessibility-first public service (healthcare, local government, charities): calm teal, high contrast, 18 px body text.",
+      "baseColors": {
+        "primary": "#0F766E",
+        "secondary": "#1E3A5F",
+        "neutral": "#4B5563",
+        "success": "#15803D",
+        "alert": "#B45309",
+        "error": "#B91C1C"
+      },
+      "colorShadeOverrides": {
+        "primary": {
+          "800": "#0F766E"
+        },
+        "success": {
+          "700": "#15803D"
+        },
+        "alert": {
+          "700": "#B45309"
+        },
+        "error": {
+          "700": "#B91C1C"
+        },
+        "custom1": {
+          "500": "#FFDD00"
+        }
+      },
+      "fonts": {
+        "heading": "Lexend",
+        "body": "Atkinson Hyperlegible"
+      },
+      "textSize": 7,
+      "border": 2,
+      "roundness": 3,
+      "iconLibrary": "lucide",
+      "colorSchemeMode": "light-only",
+      "reasoning": "Theme from the Scram theme set (v3)"
+    }
+  }
+}
